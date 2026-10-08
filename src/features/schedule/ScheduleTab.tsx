@@ -27,6 +27,7 @@ import {
 } from './model'
 import { EventDialog, type EventDraft } from './EventDialog'
 import { EVENT_ICONS } from './eventKinds'
+import { NotBooked } from './NotBooked'
 
 const HOUR_PX = 48
 const HOURS = Array.from({ length: 24 }, (_, h) => h)
@@ -38,6 +39,10 @@ const KIND_STYLES: Record<ItemKind, string> = {
   checkout: 'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-200 dark:bg-amber-400/10 dark:text-amber-200 dark:ring-amber-400/20',
   transport: 'bg-sky-50 text-sky-900 ring-1 ring-inset ring-sky-200 dark:bg-sky-400/10 dark:text-sky-200 dark:ring-sky-400/20',
   event: 'bg-brand-50 text-brand-900 ring-1 ring-inset ring-brand-200',
+}
+
+function itemStyle(item: ScheduleItem) {
+  return cn(KIND_STYLES[item.kind], item.tentative && 'border border-dashed border-brand-400 bg-brand-50/40 shadow-none ring-0')
 }
 
 function hourLabel(h: number) {
@@ -379,14 +384,15 @@ function Grid({ days, weatherFor, onOpen, onAdd, onMove }: GridProps) {
                       onClick={() => onOpen(item)}
                       className={cn(
                         'flex w-full items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-left text-[11px] font-medium',
-                        KIND_STYLES[item.kind],
+                        itemStyle(item),
                       )}
-                      title={item.title}
+                      title={item.tentative ? `${item.title} (not booked)` : item.title}
                     >
                       <ItemIcon item={item} />
                       <span className="truncate">
                         {item.subtitle && <span className="opacity-70">{item.subtitle}: </span>}
                         {item.title}
+                        {item.tentative && <span className="sr-only"> (not booked)</span>}
                       </span>
                     </button>
                   ))}
@@ -475,43 +481,51 @@ function Grid({ days, weatherFor, onOpen, onAdd, onMove }: GridProps) {
                       <span className="truncate">{clockLabel(dragged.start)}</span>
                     </div>
                   )}
-                  {d.timed.map((item) => (
-                    <div
-                      key={item.key}
-                      {...openOnActivate(() => !swallowClick.current && onOpen(item))}
-                      onPointerDown={(e) => onItemPointerDown(e, item)}
-                      onPointerMove={onItemPointerMove}
-                      onPointerUp={onItemPointerUp}
-                      onPointerCancel={onItemPointerCancel}
-                      className={cn(
-                        'absolute flex cursor-pointer flex-col justify-start overflow-hidden rounded-md px-1.5 pb-0.5 pt-1 text-left text-[11px] leading-tight shadow-sm',
-                        KIND_STYLES[item.kind],
-                        onMove && item.kind === 'event' && 'cursor-grab',
-                        dragged?.item.key === item.key && 'cursor-grabbing opacity-40',
-                      )}
-                      style={{
-                        top: (item.start / 60) * HOUR_PX + 1,
-                        height: Math.max(((item.end - item.start) / 60) * HOUR_PX - 2, 18),
-                        left: `calc(${(item.lane / item.lanes) * 100}% + 2px)`,
-                        width: `calc(${100 / item.lanes}% - 4px)`,
-                      }}
-                      title={`${clockLabel(item.start)} ${item.title}`}
-                    >
-                      <span className="flex items-center gap-1 font-medium">
-                        <ItemIcon item={item} />
-                        <span className="truncate">{item.title}</span>
-                      </span>
-                      <span className="block truncate">
-                        <span className="opacity-70">{clockLabel(item.start)}</span>
-                        {item.subtitle && (
-                          <>
-                            <span className="opacity-70"> · </span>
-                            <LocationText item={item} />
-                          </>
+                  {d.timed.map((item) => {
+                    // An hour block fits two title lines plus the time at a 13px line height.
+                    const roomy = item.end - item.start >= 60
+                    return (
+                      <div
+                        key={item.key}
+                        {...openOnActivate(() => !swallowClick.current && onOpen(item))}
+                        onPointerDown={(e) => onItemPointerDown(e, item)}
+                        onPointerMove={onItemPointerMove}
+                        onPointerUp={onItemPointerUp}
+                        onPointerCancel={onItemPointerCancel}
+                        className={cn(
+                          'absolute flex cursor-pointer flex-col justify-start overflow-hidden rounded-md px-1.5 pb-0.5 pt-1 text-left text-[11px] leading-tight shadow-sm',
+                          roomy && 'leading-[13px]',
+                          itemStyle(item),
+                          onMove && item.kind === 'event' && 'cursor-grab',
+                          dragged?.item.key === item.key && 'cursor-grabbing opacity-40',
                         )}
-                      </span>
-                    </div>
-                  ))}
+                        style={{
+                          top: (item.start / 60) * HOUR_PX + 1,
+                          height: Math.max(((item.end - item.start) / 60) * HOUR_PX - 2, 18),
+                          left: `calc(${(item.lane / item.lanes) * 100}% + 2px)`,
+                          width: `calc(${100 / item.lanes}% - 4px)`,
+                        }}
+                        title={`${clockLabel(item.start)} ${item.title}${item.tentative ? ' (not booked)' : ''}`}
+                      >
+                        <span className={cn('flex gap-1 font-medium', roomy ? 'items-start' : 'items-center')}>
+                          <ItemIcon item={item} className={cn(roomy && 'mt-px')} />
+                          <span className={roomy ? 'line-clamp-2 break-words' : 'truncate'}>
+                            {item.title}
+                            {item.tentative && <span className="sr-only"> (not booked)</span>}
+                          </span>
+                        </span>
+                        <span className="block truncate">
+                          <span className="opacity-70">{clockLabel(item.start)}</span>
+                          {item.subtitle && (
+                            <>
+                              <span className="opacity-70"> · </span>
+                              <LocationText item={item} />
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })}
@@ -545,13 +559,14 @@ function Agenda({ days, weatherFor, onOpen, onAdd }: ViewProps) {
                 <button
                   type="button"
                   onClick={() => onOpen(item)}
-                  className={cn('flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm', KIND_STYLES[item.kind])}
+                  className={cn('flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm', itemStyle(item))}
                 >
                   <ItemIcon item={item} className="h-3.5 w-3.5" />
                   <span className="min-w-0 flex-1 truncate">
                     {item.subtitle && <span className="opacity-70">{item.subtitle}: </span>}
                     {item.title}
                   </span>
+                  {item.tentative && <NotBooked />}
                   <span className="text-xs opacity-60">All day</span>
                 </button>
               </li>
@@ -560,13 +575,14 @@ function Agenda({ days, weatherFor, onOpen, onAdd }: ViewProps) {
               <li key={item.key}>
                 <div
                   {...openOnActivate(() => onOpen(item))}
-                  className={cn('flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm', KIND_STYLES[item.kind])}
+                  className={cn('flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm', itemStyle(item))}
                 >
                   <span className="num w-16 shrink-0 text-xs font-medium opacity-80">{clockLabel(item.start)}</span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5 font-medium">
                       <ItemIcon item={item} className="h-3.5 w-3.5" />
                       <span className="truncate">{item.title}</span>
+                      {item.tentative && <NotBooked />}
                     </span>
                     {item.subtitle && (
                       <span className="block truncate text-xs">

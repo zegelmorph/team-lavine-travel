@@ -3,8 +3,12 @@ import {
   buildSchedule,
   dropStart,
   eventMap,
+  formatDuration,
   layoutTimed,
   movedTimes,
+  parseDuration,
+  runTime,
+  runTimeToSave,
   scheduleDays,
   scheduleItems,
   type ScheduleInput,
@@ -69,6 +73,7 @@ const leg = (over: Partial<Transport>): Transport => ({
   arrive_time: null,
   arrive_tz: null,
   notes: null,
+  created_at: '2026-10-01T00:00:00Z',
   ...over,
 })
 
@@ -78,6 +83,7 @@ const event = (over: Partial<TripEvent>): TripEvent => ({
   date: '2026-10-10',
   start_time: null,
   end_time: null,
+  booked: true,
   kind: 'museum',
   title: 'Louvre',
   location: null,
@@ -87,6 +93,7 @@ const event = (over: Partial<TripEvent>): TripEvent => ({
   lng: null,
   google_maps_url: null,
   seats: null,
+  run_time_minutes: null,
   notes: null,
   ...over,
 })
@@ -133,6 +140,17 @@ describe('scheduleItems', () => {
     expect(item).toMatchObject({ date: '2026-10-10', start: 495, end: 645, title: 'AA 100 · SEA → CDG' })
   })
 
+  it('says which way a leg with one known end goes', () => {
+    const items = scheduleItems({
+      ...empty,
+      transport: [
+        leg({ mode: 'subway', carrier: null, number: null, arrive_location: null, depart_date: '2026-10-10' }),
+        leg({ mode: 'subway', carrier: null, number: null, depart_location: null, depart_date: '2026-10-10' }),
+      ],
+    })
+    expect(items.map((i) => i.title)).toEqual(['Subway · from SEA', 'Subway · to CDG'])
+  })
+
   it('splits an overnight leg into departure and arrival', () => {
     const items = scheduleItems({
       ...empty,
@@ -162,6 +180,16 @@ describe('scheduleItems', () => {
       ['2026-10-09', 1080],
       ['2026-10-10', undefined],
     ])
+  })
+
+  it('leaves undated ideas off and marks dated ones tentative', () => {
+    const events = [event({ id: 'idea', booked: false, date: null }), event({ id: 'maybe', booked: false }), event({ id: 'set' })]
+    const items = scheduleItems({ ...empty, events })
+    expect(items.map((i) => [i.sourceId, i.tentative])).toEqual([
+      ['maybe', true],
+      ['set', false],
+    ])
+    expect(scheduleDays({ ...empty, events })).toEqual(['2026-10-10'])
   })
 
   it('gives events without an end an hour', () => {
@@ -210,6 +238,30 @@ describe('event maps', () => {
     expect(eventMap(event({ location: 'Home' }), [])).toBeNull()
     const picked = eventMap(event({ location: 'Louvre', address: 'Rue de Rivoli, Paris' }), [])!
     expect(new URL(picked.embed).searchParams.get('q')).toBe('Louvre, Rue de Rivoli, Paris')
+  })
+})
+
+describe('run time', () => {
+  it('comes from the start-end span unless adjusted', () => {
+    expect(runTime({ start_time: '19:30:00', end_time: '22:00:00', run_time_minutes: null })).toBe(150)
+    expect(runTime({ start_time: '19:30:00', end_time: '22:00:00', run_time_minutes: 135 })).toBe(135)
+    expect(runTime({ start_time: '19:30:00', end_time: null, run_time_minutes: null })).toBeNull()
+    expect(runTime({ start_time: '22:00:00', end_time: '23:59:00', run_time_minutes: null })).toBe(120)
+  })
+
+  it('reads and writes durations', () => {
+    expect(['2:30', '2h 30m', '2 hr 30 min', '2.5h', '150', '2 hours', '45 min', '2h30', '2h 30'].map(parseDuration)).toEqual([
+      150, 150, 150, 150, 150, 120, 45, 150, 150,
+    ])
+    expect(['', 'soon', '0', '2:75', '25h'].map(parseDuration)).toEqual([null, null, null, null, null])
+    expect([150, 120, 45].map(formatDuration)).toEqual(['2 hr 30 min', '2 hr', '45 min'])
+  })
+
+  it('stores nothing when the run time matches the span', () => {
+    expect(runTimeToSave(150, 150)).toBeNull()
+    expect(runTimeToSave(135, 150)).toBe(135)
+    expect(runTimeToSave(135, null)).toBe(135)
+    expect(runTimeToSave(null, 150)).toBeNull()
   })
 })
 

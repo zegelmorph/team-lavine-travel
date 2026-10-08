@@ -20,6 +20,8 @@ export interface ScheduleItem {
   sourceId: string
   mode?: TransportMode
   eventKind?: EventKind
+  /** An event that isn't booked yet. Undated ones aren't on the schedule at all. */
+  tentative?: boolean
   /** Google Maps link for an event's location. */
   mapUrl?: string
   date: string
@@ -69,7 +71,7 @@ export function scheduleDays(input: ScheduleInput): string[] {
     if (t.depart_date) dates.push(t.depart_date)
     if (t.arrive_date) dates.push(t.arrive_date)
   }
-  for (const e of input.events) dates.push(e.date)
+  for (const e of input.events) if (e.date) dates.push(e.date)
   if (dates.length === 0) return []
   dates.sort()
   return eachDayISO(dates[0], dates[dates.length - 1])
@@ -85,7 +87,8 @@ export function eventMap(
 ): { embed: string; link: string | null } | null {
   const lookedUp = Boolean(e.address || e.lat != null)
   if (!e.location?.trim() && !lookedUp) return null
-  const near = destinations.find((d) => d.start_date && d.start_date <= e.date && (d.end_date ?? d.start_date) >= e.date)
+  const day = e.date
+  const near = day ? destinations.find((d) => d.start_date && d.start_date <= day && (d.end_date ?? d.start_date) >= day) : undefined
   const town = near?.name ?? (destinations.length === 1 ? destinations[0].name : undefined)
   if (!lookedUp && !town) return null
   const place = { name: e.location ?? '', address: e.address, lat: e.lat, lng: e.lng }
@@ -97,7 +100,9 @@ export function eventMap(
 
 function transportTitle(t: Transport): string {
   const name = [t.carrier, t.number].filter(Boolean).join(' ') || TRANSPORT_MODE_LABELS[t.mode]
-  const route = [t.depart_location, t.arrive_location].filter(Boolean).join(' → ')
+  const from = t.depart_location
+  const to = t.arrive_location
+  const route = from && to ? `${from} → ${to}` : from ? `from ${from}` : to ? `to ${to}` : ''
   return route ? `${name} · ${route}` : name
 }
 
@@ -191,11 +196,13 @@ export function scheduleItems(input: ScheduleInput): ScheduleItem[] {
   }
 
   for (const e of input.events) {
+    if (!e.date) continue
     items.push({
       key: `ev-${e.id}`,
       kind: 'event',
       sourceId: e.id,
       eventKind: e.kind,
+      tentative: !e.booked,
       mapUrl: eventMap(e, input.destinations)?.link ?? undefined,
       date: e.date,
       title: e.title,
@@ -242,7 +249,7 @@ export function layoutTimed(items: ScheduleItem[]): PlacedItem[] {
   return placed
 }
 
-/** Lodging and destination bars first, then the rest by title, so the all-day lane reads consistently. */
+/** Lodging and destination bars first, then the rest by title, so the all-day lane reads consistently. Travel legs keep trip order. */
 const ALL_DAY_ORDER: Record<ItemKind, number> = {
   destination: 0,
   lodging: 1,
@@ -258,7 +265,9 @@ export function buildSchedule(input: ScheduleInput): ScheduleDay[] {
     const today = items.filter((i) => i.date === date)
     return {
       date,
-      allDay: today.filter((i) => i.start == null).sort((a, b) => ALL_DAY_ORDER[a.kind] - ALL_DAY_ORDER[b.kind] || a.title.localeCompare(b.title)),
+      allDay: today
+        .filter((i) => i.start == null)
+        .sort((a, b) => ALL_DAY_ORDER[a.kind] - ALL_DAY_ORDER[b.kind] || (a.kind === 'transport' ? 0 : a.title.localeCompare(b.title))),
       timed: layoutTimed(today),
     }
   })
@@ -292,6 +301,43 @@ export function movedTimes(e: Pick<TripEvent, 'start_time' | 'end_time'>, start:
   const length = e.end_time && endMinutes(e.end_time) >= from ? endMinutes(e.end_time) - from : null
   const begin = Math.max(0, Math.min(start, DAY_END - (length ?? 0)))
   return { start_time: clockTime(begin), end_time: length == null ? null : clockTime(begin + length) }
+}
+
+/** Minutes from start to end, or null when either is missing or the end isn't after the start. */
+export function spanMinutes(start: string | null, end: string | null): number | null {
+  if (!start || !end) return null
+  const span = endMinutes(end) - minutesOf(start)
+  return span > 0 ? span : null
+}
+
+/** A show's run time: the adjusted value if there is one, otherwise its start-end span. */
+export function runTime(e: Pick<TripEvent, 'start_time' | 'end_time' | 'run_time_minutes'>): number | null {
+  return e.run_time_minutes ?? spanMinutes(e.start_time, e.end_time)
+}
+
+export function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return [h && `${h} hr`, m && `${m} min`].filter(Boolean).join(' ')
+}
+
+const HOURS_MINUTES = /^(?:(\d+(?:\.\d+)?)\s*h(?:ours?|rs?)?)?\s*(?:(\d+)\s*(?:m(?:ins?|inutes?)?)?)?$/
+
+/** What to store for a run time: nothing when it matches the span, so it keeps following the times. */
+export function runTimeToSave(own: number | null, span: number | null): number | null {
+  return own === span ? null : own
+}
+
+/** Reads "2:30", "2h 30m", "2 hr 30 min", "2.5h" or plain minutes like "150". Null if unreadable or out of range. */
+export function parseDuration(text: string): number | null {
+  const t = text.trim().toLowerCase()
+  let minutes: number | null = null
+  const clock = /^(\d+):([0-5]\d)$/.exec(t)
+  const parts = HOURS_MINUTES.exec(t)
+  if (clock) minutes = Number(clock[1]) * 60 + Number(clock[2])
+  else if (/^\d+$/.test(t)) minutes = Number(t)
+  else if (parts && (parts[1] || parts[2])) minutes = Math.round(Number(parts[1] ?? 0) * 60) + Number(parts[2] ?? 0)
+  return minutes != null && minutes >= 1 && minutes <= DAY_END ? minutes : null
 }
 
 /** Earliest hour worth scrolling to: the first timed item across the trip, capped to a sensible morning. */

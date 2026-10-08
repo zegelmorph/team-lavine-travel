@@ -1,17 +1,4 @@
-import {
-  CalendarClock,
-  Coffee,
-  Compass,
-  Drama,
-  Landmark,
-  Mountain,
-  Sandwich,
-  ShoppingBag,
-  Star,
-  Utensils,
-  Wine,
-  type LucideIcon,
-} from 'lucide-react'
+import { CalendarClock, Coffee, Compass, Drama, Landmark, Mountain, Sandwich, ShoppingBag, Star, Utensils, Wine, type LucideIcon } from 'lucide-react'
 import type { EventKind } from '@/lib/types'
 
 export const EVENT_ICONS: Record<EventKind, LucideIcon> = {

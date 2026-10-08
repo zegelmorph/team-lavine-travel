@@ -1,15 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import {
-  Cloud,
-  CloudDrizzle,
-  CloudFog,
-  CloudLightning,
-  CloudRain,
-  CloudSnow,
-  CloudSun,
-  Sun,
-  type LucideIcon,
-} from 'lucide-react'
+import { Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Sun, type LucideIcon } from 'lucide-react'
 
 /** WMO weather interpretation codes, as returned by Open-Meteo. */
 export function describeWeather(code: number | null): { label: string; icon: LucideIcon } {
@@ -49,13 +39,10 @@ export function setTempUnit(unit: TempUnit) {
 }
 
 export function useTempUnit(): TempUnit {
-  return useSyncExternalStore(
-    (l) => {
-      listeners.add(l)
-      return () => listeners.delete(l)
-    },
-    readUnit,
-  )
+  return useSyncExternalStore((l) => {
+    listeners.add(l)
+    return () => listeners.delete(l)
+  }, readUnit)
 }
 
 /** Weather is stored in Celsius; "72°" or "22°". */

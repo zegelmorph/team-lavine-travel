@@ -54,9 +54,11 @@ export async function invokeFunction<T = unknown>(name: string, body: Record<str
 export function useInviteUser() {
   return useMutation({
     mutationFn: async (v: { email: string; householdId: string }) =>
-      (await invokeFunction<{ status: 'invited' | 'added_to_household' }>('admin-invite-user', {
-        ...v,
-        redirectTo: window.location.origin,
-      })).status,
+      (
+        await invokeFunction<{ status: 'invited' | 'added_to_household' }>('admin-invite-user', {
+          ...v,
+          redirectTo: window.location.origin,
+        })
+      ).status,
   })
 }

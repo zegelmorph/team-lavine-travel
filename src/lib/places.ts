@@ -22,8 +22,7 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
 }
 
 export async function searchPlaces(input: string, kind: PlaceKind, sessionToken: string): Promise<PlaceSuggestion[]> {
-  return (await call<{ suggestions: PlaceSuggestion[] }>({ action: 'autocomplete', input, kind, sessionToken }))
-    .suggestions
+  return (await call<{ suggestions: PlaceSuggestion[] }>({ action: 'autocomplete', input, kind, sessionToken })).suggestions
 }
 
 export async function placeDetails(placeId: string, sessionToken: string): Promise<PlaceDetails> {
@@ -38,9 +37,7 @@ export async function geocodeCity(name: string): Promise<{ lat: number; lng: num
   const query = name.split(',')[0].trim()
   if (!query) return null
   try {
-    const res = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&name=${encodeURIComponent(query)}`,
-    )
+    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&name=${encodeURIComponent(query)}`)
     const body = (await res.json()) as {
       results?: { latitude: number; longitude: number; name: string; admin1?: string; country?: string }[]
     }

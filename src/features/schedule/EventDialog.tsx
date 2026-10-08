@@ -7,11 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Label, Select, Textarea, field } from '@/components/ui/input'
 import { DateInput } from '@/components/ui/date-input'
+import { Switch } from '@/components/ui/switch'
 import { confirmAction } from '@/components/ui/confirm'
 import { PlaceSearch } from '@/components/PlaceSearch'
 import { MapEmbed } from '@/components/MapEmbed'
 import { useOnline } from '@/lib/useOnline'
-import { eventMap } from './model'
+import { cn } from '@/lib/utils'
+import { eventMap, formatDuration, parseDuration, runTimeToSave, spanMinutes } from './model'
 
 type Place = Pick<TripEvent, 'address' | 'place_id' | 'lat' | 'lng' | 'google_maps_url'>
 const NO_PLACE: Place = { address: null, place_id: null, lat: null, lng: null, google_maps_url: null }
@@ -27,7 +29,7 @@ const TITLE_HINTS: Record<EventKind, string> = {
   activity: 'Hike, kayaking, spa...',
   shopping: 'Farmers market',
   appointment: 'Pickup, check-in, meeting...',
-  other: 'Anything with a date',
+  other: 'Anything else',
 }
 
 export interface EventDraft {
@@ -60,6 +62,7 @@ export function EventDialog({
   const [start, setStart] = useState(event?.start_time?.slice(0, 5) ?? initial?.start_time ?? '09:00')
   const [end, setEnd] = useState(event?.end_time?.slice(0, 5) ?? initial?.end_time ?? '')
   const [kind, setKind] = useState<EventKind>(event?.kind ?? 'show')
+  const [booked, setBooked] = useState(event?.booked ?? true)
   const [location, setLocation] = useState(event?.location ?? '')
   const [place, setPlace] = useState<Place>(() => ({
     address: event?.address ?? null,
@@ -69,6 +72,8 @@ export function EventDialog({
     google_maps_url: event?.google_maps_url ?? null,
   }))
   const [seats, setSeats] = useState(event?.seats ?? '')
+  // Null follows the start-end span; text is the user's own run time.
+  const [runTimeText, setRunTimeText] = useState<string | null>(event?.run_time_minutes ? formatDuration(event.run_time_minutes) : null)
   const [notes, setNotes] = useState(event?.notes ?? '')
   // Settle typing before the iframe reloads.
   const [mapLocation, setMapLocation] = useState(location)
@@ -77,8 +82,13 @@ export function EventDialog({
     return () => clearTimeout(timer)
   }, [location])
   const map = mapLocation.trim() ? eventMap({ ...place, location: mapLocation, date }, destinations) : null
-  const badTimes = !allDay && Boolean(end) && end < start
-  const canSave = title.trim() && date && !badTimes && (allDay || start)
+  // Ideas that aren't booked can skip the date, and times only mean something on a date.
+  const timed = !allDay && (booked || Boolean(date))
+  const badTimes = timed && Boolean(end) && end < start
+  const span = timed ? spanMinutes(start, end) : null
+  const ownRunTime = runTimeText?.trim() ? parseDuration(runTimeText) : null
+  const badRunTime = kind === 'show' && Boolean(runTimeText?.trim()) && ownRunTime == null
+  const canSave = title.trim() && (date || !booked) && !badTimes && !badRunTime && (!timed || start)
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -88,12 +98,14 @@ export function EventDialog({
         ...(event ? { id: event.id } : {}),
         kind,
         title: title.trim(),
-        date,
-        start_time: allDay ? null : start,
-        end_time: allDay || !end ? null : end,
+        booked,
+        date: date || null,
+        start_time: timed ? start : null,
+        end_time: timed && end ? end : null,
         location: location.trim() || null,
         ...(location.trim() ? place : NO_PLACE),
-        seats: kind === 'show' ? seats.trim() || null : null,
+        seats: kind === 'show' && booked ? seats.trim() || null : null,
+        run_time_minutes: kind === 'show' ? runTimeToSave(ownRunTime, span) : null,
         notes: notes.trim() || null,
       },
       { onSuccess: onClose, onError: (err) => toast.error(err.message) },
@@ -124,7 +136,13 @@ export function EventDialog({
               <Label htmlFor="ev-title">What</Label>
               <Input id="ev-title" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder={TITLE_HINTS[kind]} />
             </div>
-            {kind === 'show' && (
+            <Switch
+              label="Booked"
+              description={booked ? undefined : 'Still deciding. The date is optional until it is booked.'}
+              checked={booked}
+              onChange={setBooked}
+            />
+            {kind === 'show' && booked && (
               <div>
                 <Label htmlFor="ev-seats">Seats</Label>
                 <Input id="ev-seats" value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="Row F, seats 101–102" />
@@ -132,14 +150,16 @@ export function EventDialog({
             )}
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 sm:col-span-1">
-                <Label htmlFor="ev-date">Date</Label>
-                <DateInput id="ev-date" value={date} onChange={setDate} className={`${field} w-full`} />
+                <Label htmlFor="ev-date">{booked ? 'Date' : 'Date (optional)'}</Label>
+                <DateInput id="ev-date" value={date} onChange={setDate} clearable={!booked} className={`${field} w-full`} />
               </div>
-              <label className="col-span-2 flex items-center gap-2 self-end pb-2 text-slate-600 sm:col-span-1">
-                <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
-                All day
-              </label>
-              {!allDay && (
+              {(booked || date) && (
+                <label className="col-span-2 flex items-center gap-2 self-end pb-2 text-slate-600 sm:col-span-1">
+                  <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+                  All day
+                </label>
+              )}
+              {timed && (
                 <>
                   <div className="col-span-2 sm:col-span-1">
                     <Label htmlFor="ev-start">Starts</Label>
@@ -153,6 +173,41 @@ export function EventDialog({
               )}
             </div>
             {badTimes && <p className="text-xs text-red-700">The end time is before the start time.</p>}
+            {booked && !date && <p className="text-xs text-slate-500">Booked events need a date.</p>}
+            {kind === 'show' && (
+              <div>
+                <Label htmlFor="ev-runtime">Run time</Label>
+                <Input
+                  id="ev-runtime"
+                  value={runTimeText ?? (span ? formatDuration(span) : '')}
+                  onChange={(e) => setRunTimeText(e.target.value)}
+                  onBlur={() => runTimeText?.trim() === '' && setRunTimeText(null)}
+                  placeholder="2h 30m"
+                  aria-invalid={badRunTime || undefined}
+                  aria-describedby="ev-runtime-hint"
+                />
+                <p id="ev-runtime-hint" className={cn('mt-1 text-xs', badRunTime ? 'text-red-700' : 'text-slate-500')}>
+                  {badRunTime ? (
+                    'Try something like 2h 30m, 2:30 or 150.'
+                  ) : ownRunTime != null && ownRunTime !== span ? (
+                    span ? (
+                      <>
+                        Adjusted.{' '}
+                        <button type="button" onClick={() => setRunTimeText(null)} className="font-medium text-brand-700 hover:text-brand-900">
+                          Use start to end ({formatDuration(span)})
+                        </button>
+                      </>
+                    ) : (
+                      'Saved as typed.'
+                    )
+                  ) : span ? (
+                    'From the start and end times. Type to adjust; the times stay as they are.'
+                  ) : (
+                    'Add an end time to fill this in, or type it.'
+                  )}
+                </p>
+              </div>
+            )}
           </div>
           <div>
             <Label htmlFor="ev-loc">Where</Label>

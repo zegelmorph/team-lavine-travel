@@ -68,9 +68,7 @@ export function shortZone(tz: string | null, day?: string): string {
   if (!tz) return ''
   try {
     const at = day ? parseDay(day) : new Date()
-    const part = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
-      .formatToParts(at)
-      .find((p) => p.type === 'timeZoneName')
+    const part = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' }).formatToParts(at).find((p) => p.type === 'timeZoneName')
     return part?.value ?? tz
   } catch {
     return tz

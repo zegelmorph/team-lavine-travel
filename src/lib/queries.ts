@@ -4,6 +4,7 @@ import { supabase, unwrap } from './supabase'
 import { invokeFunction } from './householdQueries'
 import { useOnline } from './useOnline'
 import { useHousehold } from '@/features/auth/HouseholdProvider'
+import { orderLegs } from '@/features/transport/order'
 import type {
   Destination,
   HouseholdMember,
@@ -87,11 +88,14 @@ function tripQuery(tripId: string) {
         (a, b) => a.sort_order - b.sort_order || (a.start_date ?? '9999').localeCompare(b.start_date ?? '9999') || a.name.localeCompare(b.name),
       )
       row.participants.sort((a, b) => a.sort_order - b.sort_order || a.display_name.localeCompare(b.display_name))
-      row.transport.sort(
-        (a, b) => (a.depart_date ?? '9999').localeCompare(b.depart_date ?? '9999') || (a.depart_time ?? '').localeCompare(b.depart_time ?? ''),
-      )
+      row.transport = orderLegs(row.transport)
       row.lodging.sort((a, b) => a.check_in.localeCompare(b.check_in))
-      row.events.sort((a, b) => a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''))
+      row.events.sort(
+        (a, b) =>
+          (a.date ?? '9999').localeCompare(b.date ?? '9999') ||
+          (a.start_time ?? '').localeCompare(b.start_time ?? '') ||
+          a.title.localeCompare(b.title),
+      )
       row.packItems.sort((a, b) => a.created_at.localeCompare(b.created_at))
       return row
     },

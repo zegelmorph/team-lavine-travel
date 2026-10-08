@@ -85,18 +85,20 @@ export interface Participant {
   sort_order: number
 }
 
-export type TransportMode = 'car' | 'plane' | 'train' | 'ferry' | 'cruise' | 'bus' | 'rideshare' | 'other'
+export type TransportMode = 'car' | 'plane' | 'train' | 'subway' | 'ferry' | 'cruise' | 'bus' | 'rideshare' | 'walk' | 'other'
 
-export const TRANSPORT_MODES: TransportMode[] = ['plane', 'car', 'train', 'ferry', 'cruise', 'bus', 'rideshare', 'other']
+export const TRANSPORT_MODES: TransportMode[] = ['plane', 'car', 'train', 'subway', 'ferry', 'cruise', 'bus', 'rideshare', 'walk', 'other']
 
 export const TRANSPORT_MODE_LABELS: Record<TransportMode, string> = {
   car: 'Car',
   plane: 'Plane',
   train: 'Train',
+  subway: 'Subway',
   ferry: 'Ferry',
   cruise: 'Cruise',
   bus: 'Bus',
   rideshare: 'Rideshare / taxi',
+  walk: 'Walk',
   other: 'Other',
 }
 
@@ -119,6 +121,7 @@ export interface Transport {
   arrive_time: string | null
   arrive_tz: string | null
   notes: string | null
+  created_at: string
 }
 
 export interface Lodging {
@@ -177,7 +180,9 @@ export interface TripEvent {
   id: string
   trip_id: string
   kind: EventKind
-  date: string
+  /** False for ideas not booked yet, which may also have no date. */
+  booked: boolean
+  date: string | null
   /** `HH:mm:ss`; null means all day. */
   start_time: string | null
   end_time: string | null
@@ -191,6 +196,8 @@ export interface TripEvent {
   google_maps_url: string | null
   /** Seat numbers, for shows. */
   seats: string | null
+  /** Set only when adjusted; otherwise the run time is the start-end span. */
+  run_time_minutes: number | null
   notes: string | null
 }
 
