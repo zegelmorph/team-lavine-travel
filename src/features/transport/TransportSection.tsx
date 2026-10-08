@@ -12,6 +12,7 @@ import { Input, Label, Select, field } from '@/components/ui/input'
 import { DateInput } from '@/components/ui/date-input'
 import { confirmAction } from '@/components/ui/confirm'
 import { PlaceSearch } from '@/components/PlaceSearch'
+import { cn } from '@/lib/utils'
 import { MODE_FIELDS, MODE_ICONS } from './modes'
 
 export function TransportSection({ trip }: { trip: TripBundle }) {
@@ -41,9 +42,7 @@ export function TransportSection({ trip }: { trip: TripBundle }) {
           ))}
         </ul>
       )}
-      {editing && (
-        <TransportDialog trip={trip} leg={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />
-      )}
+      {editing && <TransportDialog trip={trip} leg={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
     </Card>
   )
 }
@@ -70,7 +69,13 @@ function Endpoint({
       <div className="flex items-center gap-1.5 truncate font-medium text-slate-800">
         <span className="truncate">{location || '—'}</span>
         {maps && (
-          <a href={maps} target="_blank" rel="noreferrer" className="shrink-0 text-slate-400 hover:text-brand-700 max-md:-m-2.5 max-md:p-2.5" aria-label="Open in Google Maps">
+          <a
+            href={maps}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 text-slate-400 hover:text-brand-700 max-md:-m-2.5 max-md:p-2.5"
+            aria-label="Open in Google Maps"
+          >
             <ExternalLink className="h-3 w-3" />
           </a>
         )}
@@ -88,29 +93,29 @@ function Endpoint({
 
 function TransportRow({ leg, onEdit, onDelete }: { leg: Transport; onEdit: () => void; onDelete: () => void }) {
   const Icon = MODE_ICONS[leg.mode]
-  const title = [leg.carrier, leg.number].filter(Boolean).join(' ') || TRANSPORT_MODE_LABELS[leg.mode]
+  const mode = TRANSPORT_MODE_LABELS[leg.mode]
+  const title = [leg.carrier, leg.number].filter(Boolean).join(' ')
+  const header = Boolean(title || leg.confirmation)
+  // Phones: icon, heading and buttons on top, the route full width below. Wider: the route sits beside the icon.
   return (
     <li className="px-5 py-4 max-md:px-4">
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3">
+        <span
+          role="img"
+          aria-label={mode}
+          title={mode}
+          className="col-start-1 row-start-1 flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-700"
+        >
           <Icon className="h-5 w-5" />
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h4 className="truncate font-semibold text-slate-900">{title}</h4>
-              {leg.confirmation && <p className="text-xs text-slate-500">Confirmation {leg.confirmation}</p>}
-            </div>
-            <span className="flex shrink-0">
-              <Button variant="ghost" size="icon" needsOnline onClick={onEdit} title="Edit">
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </span>
+        {header && (
+          <div className="col-start-2 row-start-1 min-w-0 self-center">
+            {title && <h4 className="truncate font-semibold text-slate-900">{title}</h4>}
+            {leg.confirmation && <p className="text-xs text-slate-500">Confirmation {leg.confirmation}</p>}
           </div>
-          <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-start gap-3">
+        )}
+        <div className={cn('min-w-0 max-md:col-span-3 max-md:mt-3 md:col-start-2', header ? 'md:row-start-2 md:mt-2' : 'md:row-start-1')}>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-3">
             <Endpoint
               label="From"
               location={leg.depart_location}
@@ -131,6 +136,14 @@ function TransportRow({ leg, onEdit, onDelete }: { leg: Transport; onEdit: () =>
           </div>
           {leg.notes && <p className="mt-2 text-xs text-slate-500">{leg.notes}</p>}
         </div>
+        <span className="col-start-3 row-start-1 flex">
+          <Button variant="ghost" size="icon" needsOnline onClick={onEdit} title="Edit">
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </span>
       </div>
     </li>
   )
@@ -183,7 +196,9 @@ export function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg:
     set(Object.fromEntries(Object.entries(patch).map(([k, v]) => [`${end}_${k}`, v])) as Partial<Draft>)
   const labels = MODE_FIELDS[draft.mode]
 
-  const zones = [...new Set([localTimeZone(), ...trip.destinations.map((d) => d.timezone), draft.depart_tz, draft.arrive_tz].filter(Boolean) as string[])]
+  const zones = [
+    ...new Set([localTimeZone(), ...trip.destinations.map((d) => d.timezone), draft.depart_tz, draft.arrive_tz].filter(Boolean) as string[]),
+  ]
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -294,7 +309,12 @@ export function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg:
 
           <div>
             <Label htmlFor="t-notes">Notes</Label>
-            <Input id="t-notes" value={draft.notes} onChange={(e) => set({ notes: e.target.value })} placeholder="Seats, terminal, pickup details..." />
+            <Input
+              id="t-notes"
+              value={draft.notes}
+              onChange={(e) => set({ notes: e.target.value })}
+              placeholder="Seats, terminal, pickup details..."
+            />
           </div>
           <div className="flex justify-end gap-2 max-md:pb-4">
             <Button type="button" variant="ghost" onClick={onClose}>

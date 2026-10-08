@@ -115,7 +115,6 @@ function TripHeader({ trip }: { trip: TripBundle }) {
         <div className="flex flex-col items-start gap-1 md:items-end">
           <Select
             aria-label="Status"
-            aria-describedby="status-hint"
             value={trip.status}
             disabled={!online}
             onChange={(e) => setStatus(e.target.value as TripStatus)}
@@ -127,9 +126,6 @@ function TripHeader({ trip }: { trip: TripBundle }) {
               </option>
             ))}
           </Select>
-          <span id="status-hint" className="text-[11px] text-slate-400">
-            Updates from the destination dates
-          </span>
         </div>
       </div>
       {editing && <EditTripDialog trip={trip} onClose={() => setEditing(false)} />}

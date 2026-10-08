@@ -19,6 +19,16 @@ export function CardHeader({ title, actions, className }: { title: ReactNode; ac
   )
 }
 
+/** Title row for one part of a card that groups several parts under one header. Same height with or without actions. */
+export function CardSubheader({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="flex min-h-12 items-center justify-between gap-3 px-5 py-2 max-md:px-4">
+      <h4 className={eyebrow}>{title}</h4>
+      {actions}
+    </div>
+  )
+}
+
 export function PageHeader({
   title,
   subtitle,

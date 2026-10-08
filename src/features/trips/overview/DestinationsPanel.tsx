@@ -2,19 +2,12 @@ import { useState, type FormEvent } from 'react'
 import { useIsMutating } from '@tanstack/react-query'
 import { ExternalLink, MapPin, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  keys,
-  useDeleteTripRow,
-  useRefreshWeather,
-  useSaveTripRow,
-  useWeather,
-  type TripBundle,
-} from '@/lib/queries'
+import { keys, useDeleteTripRow, useRefreshWeather, useSaveTripRow, useWeather, type TripBundle } from '@/lib/queries'
 import { formatDateRange, nights } from '@/lib/dates'
 import { geocodeCity } from '@/lib/places'
 import { googleMapsUrl } from '@/lib/mapLinks'
 import type { Destination, WeatherDay } from '@/lib/types'
-import { Card, CardHeader } from '@/components/ui/card'
+import { CardSubheader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Label, field } from '@/components/ui/input'
@@ -24,7 +17,7 @@ import { PlaceSearch } from '@/components/PlaceSearch'
 import { plural } from '@/lib/utils'
 import { WeatherStrip } from './WeatherStrip'
 
-export function DestinationsCard({ trip }: { trip: TripBundle }) {
+export function DestinationsPanel({ trip }: { trip: TripBundle }) {
   const [editing, setEditing] = useState<Destination | 'new' | null>(null)
   const ids = trip.destinations.map((d) => d.id)
   const { data: weather } = useWeather(trip.id, ids)
@@ -38,8 +31,8 @@ export function DestinationsCard({ trip }: { trip: TripBundle }) {
   }
 
   return (
-    <Card>
-      <CardHeader
+    <section>
+      <CardSubheader
         title="Destinations"
         actions={
           <span className="flex gap-1">
@@ -49,9 +42,7 @@ export function DestinationsCard({ trip }: { trip: TripBundle }) {
                 size="sm"
                 needsOnline
                 disabled={refresh.isPending}
-                onClick={() =>
-                  refresh.mutate({ force: true }, { onError: (e) => toast.error(`Weather: ${e.message}`) })
-                }
+                onClick={() => refresh.mutate({ force: true }, { onError: (e) => toast.error(`Weather: ${e.message}`) })}
                 title="Refresh weather"
               >
                 <RefreshCw className={refresh.isPending ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />
@@ -65,7 +56,7 @@ export function DestinationsCard({ trip }: { trip: TripBundle }) {
         }
       />
       {trip.destinations.length === 0 ? (
-        <div className="px-5 py-10 text-center text-slate-500">
+        <div className="px-5 pb-8 pt-4 text-center text-slate-500 max-md:px-4">
           <MapPin className="mx-auto mb-2 h-6 w-6 text-slate-300" />
           Add where you're going and when. Weather is tracked automatically.
         </div>
@@ -83,14 +74,8 @@ export function DestinationsCard({ trip }: { trip: TripBundle }) {
           ))}
         </ul>
       )}
-      {editing && (
-        <DestinationDialog
-          trip={trip}
-          destination={editing === 'new' ? null : editing}
-          onClose={() => setEditing(null)}
-        />
-      )}
-    </Card>
+      {editing && <DestinationDialog trip={trip} destination={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+    </section>
   )
 }
 
@@ -109,13 +94,19 @@ function DestinationRow({
 }) {
   const maps = googleMapsUrl(d)
   return (
-    <li className="px-5 py-4 max-md:px-4">
+    <li className="px-5 py-4 first:pt-1 max-md:px-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h4 className="truncate text-[15px] font-semibold text-slate-900">{d.name}</h4>
+            <h5 className="truncate text-[15px] font-semibold text-slate-900">{d.name}</h5>
             {maps && (
-              <a href={maps} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-brand-700 max-md:-m-2.5 max-md:p-2.5" aria-label="Open in Google Maps">
+              <a
+                href={maps}
+                target="_blank"
+                rel="noreferrer"
+                className="text-slate-400 hover:text-brand-700 max-md:-m-2.5 max-md:p-2.5"
+                aria-label="Open in Google Maps"
+              >
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             )}
@@ -148,8 +139,8 @@ function DestinationRow({
                 : fetchingWeather
                   ? 'Fetching weather...'
                   : d.weather_refreshed_at
-                  ? 'No weather available for these dates.'
-                  : "Weather hasn't loaded yet. Use the Weather button above to retry."
+                    ? 'No weather available for these dates.'
+                    : "Weather hasn't loaded yet. Use the Weather button above to retry."
           }
         />
       )}
@@ -168,15 +159,7 @@ interface Draft {
   notes: string
 }
 
-export function DestinationDialog({
-  trip,
-  destination,
-  onClose,
-}: {
-  trip: TripBundle
-  destination: Destination | null
-  onClose: () => void
-}) {
+export function DestinationDialog({ trip, destination, onClose }: { trip: TripBundle; destination: Destination | null; onClose: () => void }) {
   const save = useSaveTripRow<Destination>('travel_destinations', trip.id)
   const refresh = useRefreshWeather(trip.id)
   const last = trip.destinations[trip.destinations.length - 1]
@@ -247,16 +230,20 @@ export function DestinationDialog({
               value={draft.name}
               placeholder="City or region"
               onChange={(name) => set({ name, place_id: null, lat: null, lng: null, address: null })}
-              onPick={(p) =>
-                set({ name: p.name, address: p.address, place_id: p.placeId, lat: p.lat, lng: p.lng })
-              }
+              onPick={(p) => set({ name: p.name, address: p.address, place_id: p.placeId, lat: p.lat, lng: p.lng })}
             />
             {draft.address && <p className="mt-1 truncate text-xs text-slate-400">{draft.address}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="dest-start">Arrive</Label>
-              <DateInput id="dest-start" value={draft.start_date} onChange={(start_date) => set({ start_date })} clearable className={`${field} w-full`} />
+              <DateInput
+                id="dest-start"
+                value={draft.start_date}
+                onChange={(start_date) => set({ start_date })}
+                clearable
+                className={`${field} w-full`}
+              />
             </div>
             <div>
               <Label htmlFor="dest-end">Leave</Label>
@@ -266,12 +253,7 @@ export function DestinationDialog({
           {badRange && <p className="text-xs text-red-700">The leave date is before the arrive date.</p>}
           <div>
             <Label htmlFor="dest-notes">Notes</Label>
-            <input
-              id="dest-notes"
-              value={draft.notes}
-              onChange={(e) => set({ notes: e.target.value })}
-              className={`${field} w-full`}
-            />
+            <input id="dest-notes" value={draft.notes} onChange={(e) => set({ notes: e.target.value })} className={`${field} w-full`} />
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>

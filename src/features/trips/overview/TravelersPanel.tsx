@@ -3,7 +3,7 @@ import { Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDeleteTripRow, useMembers, useSaveTripRow, type TripBundle } from '@/lib/queries'
 import type { HouseholdMember, Participant } from '@/lib/types'
-import { Card, CardHeader } from '@/components/ui/card'
+import { CardSubheader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useOnline } from '@/lib/useOnline'
@@ -18,7 +18,7 @@ export function nameFromEmail(email: string): string {
     .join(' ')
 }
 
-export function ParticipantsCard({ trip }: { trip: TripBundle }) {
+export function TravelersPanel({ trip }: { trip: TripBundle }) {
   const { data: members } = useMembers()
   const save = useSaveTripRow<Participant>('travel_participants', trip.id)
   const remove = useDeleteTripRow('travel_participants', trip.id)
@@ -44,18 +44,15 @@ export function ParticipantsCard({ trip }: { trip: TripBundle }) {
   }
 
   return (
-    <Card>
-      <CardHeader title="Travelers" />
-      <div className="space-y-3 p-4">
+    <section>
+      <CardSubheader title="Travelers" />
+      <div className="space-y-3 px-5 pb-4 pt-1 max-md:px-4">
         {trip.participants.length === 0 ? (
           <p className="text-slate-400">Who's coming along?</p>
         ) : (
           <ul className="flex flex-wrap gap-1.5">
             {trip.participants.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center gap-1.5 rounded-full bg-brand-50 py-1 pl-1 pr-2 text-sm text-brand-800"
-              >
+              <li key={p.id} className="flex items-center gap-1.5 rounded-full bg-brand-50 py-1 pl-1 pr-2 text-sm text-brand-800">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[11px] font-semibold uppercase">
                   {p.display_name.charAt(0)}
                 </span>
@@ -97,6 +94,6 @@ export function ParticipantsCard({ trip }: { trip: TripBundle }) {
           </form>
         )}
       </div>
-    </Card>
+    </section>
   )
 }
