@@ -127,7 +127,7 @@ export function PlaceSearch({
           collisionPadding={8}
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
-          className="z-[55] w-[var(--radix-popover-trigger-width)] rounded-xl border border-slate-200 bg-white p-1.5 shadow-pop"
+          className="z-[55] max-h-[min(18rem,var(--radix-popover-content-available-height))] w-[var(--radix-popover-trigger-width)] overflow-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-pop"
         >
           <ul role="listbox">
             {suggestions.map((s, i) => (

@@ -24,7 +24,7 @@ export const TRIP_STATUSES: TripStatus[] = ['dreaming', 'planning', 'happening',
 export const TRIP_STATUS_LABELS: Record<TripStatus, string> = {
   dreaming: 'Dreaming',
   planning: 'Planning',
-  happening: 'Happening',
+  happening: 'Happening Now',
   complete: 'Complete',
 }
 
@@ -44,7 +44,10 @@ export interface TripSummary extends Trip {
   start_date: string | null
   end_date: string | null
   destinations: string[]
+  /** Same order as `destinations`. */
+  destination_ids: string[]
   participant_count: number
+  participants: string[]
 }
 
 export interface Destination {
@@ -140,15 +143,63 @@ export interface Lodging {
   notes: string | null
 }
 
+export type EventKind =
+  | 'show'
+  | 'dinner'
+  | 'lunch'
+  | 'breakfast'
+  | 'drinks'
+  | 'tour'
+  | 'museum'
+  | 'activity'
+  | 'shopping'
+  | 'appointment'
+  | 'other'
+
+export const EVENT_KINDS: EventKind[] = [
+  'show',
+  'dinner',
+  'lunch',
+  'breakfast',
+  'drinks',
+  'tour',
+  'museum',
+  'activity',
+  'shopping',
+  'appointment',
+  'other',
+]
+
+export const EVENT_KIND_LABELS: Record<EventKind, string> = {
+  show: 'Show',
+  dinner: 'Dinner',
+  lunch: 'Lunch',
+  breakfast: 'Breakfast',
+  drinks: 'Drinks',
+  tour: 'Tour',
+  museum: 'Museum',
+  activity: 'Activity',
+  shopping: 'Shopping',
+  appointment: 'Appointment',
+  other: 'Other',
+}
+
 export interface TripEvent {
   id: string
   trip_id: string
+  kind: EventKind
   date: string
   /** `HH:mm:ss`; null means all day. */
   start_time: string | null
   end_time: string | null
   title: string
+  /** Place name; the fields below are filled in when it was looked up. */
   location: string | null
+  address: string | null
+  place_id: string | null
+  lat: number | null
+  lng: number | null
+  google_maps_url: string | null
   notes: string | null
 }
 

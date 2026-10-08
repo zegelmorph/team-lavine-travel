@@ -97,6 +97,12 @@ body,
   height: 100%;
 }
 
+/* Only the app's own scroll areas move; the page itself doesn't rubber-band in home-screen mode. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   @apply bg-slate-50 text-sm leading-relaxed text-slate-800 antialiased;
   font-feature-settings: 'cv11', 'ss01';

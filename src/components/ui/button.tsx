@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
+import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
@@ -15,25 +16,26 @@ const buttonVariants = cva(
         destructive: 'bg-danger-fill text-on-brand hover:bg-danger-fill-hover',
       },
       size: {
-        default: 'h-9 px-3.5',
-        sm: 'h-7 px-2.5 text-xs',
-        icon: 'h-8 w-8 rounded-full',
+        default: 'h-9 px-3.5 max-md:h-10',
+        sm: 'h-7 px-2.5 text-xs max-md:h-10 max-md:px-3',
+        icon: 'h-8 w-8 rounded-full max-md:h-10 max-md:w-10',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },
   },
 )
 
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
   asChild?: boolean
+  /** Changes saved data, so it's disabled while offline (the app is read-only then). */
+  needsOnline?: boolean
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, needsOnline = false, disabled, ...props }, ref) => {
+    const online = useOnline()
     const Comp = asChild ? Slot : 'button'
-    return <Comp ref={ref} className={cn(buttonVariants({ variant, size }), className)} {...props} />
+    return <Comp ref={ref} className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || (needsOnline && !online)} {...props} />
   },
 )
 Button.displayName = 'Button'

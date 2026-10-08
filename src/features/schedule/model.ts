@@ -2,11 +2,13 @@ import { addDaysISO, eachDayISO, minutesOf } from '@/lib/dates'
 import {
   TRANSPORT_MODE_LABELS,
   type Destination,
+  type EventKind,
   type Lodging,
   type Transport,
   type TransportMode,
   type TripEvent,
 } from '@/lib/types'
+import { googleMapsEmbedUrl, googleMapsUrl } from '@/lib/mapLinks'
 
 export type ItemKind = 'destination' | 'lodging' | 'checkin' | 'checkout' | 'transport' | 'event'
 
@@ -17,6 +19,9 @@ export interface ScheduleItem {
   /** Id of the row this came from: destination, lodging, transport or event. */
   sourceId: string
   mode?: TransportMode
+  eventKind?: EventKind
+  /** Google Maps link for an event's location. */
+  mapUrl?: string
   date: string
   title: string
   subtitle?: string
@@ -48,6 +53,7 @@ export interface ScheduleInput {
 
 /** Blocks shorter than this are drawn at this height so they stay readable and clickable. */
 export const MIN_BLOCK_MINUTES = 30
+const STAY_TIME_MINUTES = 60
 const DEFAULT_MINUTES = 60
 const DAY_END = 24 * 60
 
@@ -67,6 +73,26 @@ export function scheduleDays(input: ScheduleInput): string[] {
   if (dates.length === 0) return []
   dates.sort()
   return eachDayISO(dates[0], dates[dates.length - 1])
+}
+
+/**
+ * Embed and link for an event's place, or null when it has none. A typed name is searched near that day's
+ * destination; with no destination to anchor it ("Home", "TBD"), it gets no map rather than a wrong pin.
+ */
+export function eventMap(
+  e: Pick<TripEvent, 'date' | 'location' | 'address' | 'place_id' | 'lat' | 'lng' | 'google_maps_url'>,
+  destinations: Destination[],
+): { embed: string; link: string | null } | null {
+  const lookedUp = Boolean(e.address || e.lat != null)
+  if (!e.location?.trim() && !lookedUp) return null
+  const near = destinations.find((d) => d.start_date && d.start_date <= e.date && (d.end_date ?? d.start_date) >= e.date)
+  const town = near?.name ?? (destinations.length === 1 ? destinations[0].name : undefined)
+  if (!lookedUp && !town) return null
+  const place = { name: e.location ?? '', address: e.address, lat: e.lat, lng: e.lng }
+  return {
+    embed: googleMapsEmbedUrl(place, town),
+    link: googleMapsUrl({ ...place, address: e.address || town, google_maps_url: e.google_maps_url, place_id: e.place_id }),
+  }
 }
 
 function transportTitle(t: Transport): string {
@@ -109,7 +135,7 @@ export function scheduleItems(input: ScheduleInput): ScheduleItem[] {
         sourceId: l.id,
         date: l.check_in,
         title: `Check in · ${l.name}`,
-        ...block(minutesOf(l.check_in_time), minutesOf(l.check_in_time) + MIN_BLOCK_MINUTES),
+        ...block(minutesOf(l.check_in_time), minutesOf(l.check_in_time) + STAY_TIME_MINUTES),
       })
     }
     items.push({
@@ -119,7 +145,7 @@ export function scheduleItems(input: ScheduleInput): ScheduleItem[] {
       date: l.check_out,
       title: `Check out · ${l.name}`,
       ...(l.check_out_time
-        ? block(minutesOf(l.check_out_time), minutesOf(l.check_out_time) + MIN_BLOCK_MINUTES)
+        ? block(minutesOf(l.check_out_time), minutesOf(l.check_out_time) + STAY_TIME_MINUTES)
         : {}),
     })
   }
@@ -171,6 +197,8 @@ export function scheduleItems(input: ScheduleInput): ScheduleItem[] {
       key: `ev-${e.id}`,
       kind: 'event',
       sourceId: e.id,
+      eventKind: e.kind,
+      mapUrl: eventMap(e, input.destinations)?.link ?? undefined,
       date: e.date,
       title: e.title,
       subtitle: e.location ?? undefined,

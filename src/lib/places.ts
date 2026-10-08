@@ -51,20 +51,3 @@ export async function geocodeCity(name: string): Promise<{ lat: number; lng: num
     return null
   }
 }
-
-/** Link that opens a place in Google Maps: the stored Maps URL, else a search by name/address (and place id). */
-export function googleMapsUrl(p: {
-  google_maps_url?: string | null
-  name?: string | null
-  address?: string | null
-  place_id?: string | null
-  lat?: number | null
-  lng?: number | null
-}): string | null {
-  if (p.google_maps_url) return p.google_maps_url
-  const query = [p.name, p.address].filter(Boolean).join(', ') || (p.lat != null ? `${p.lat},${p.lng}` : '')
-  if (!query) return null
-  const params = new URLSearchParams({ api: '1', query })
-  if (p.place_id) params.set('query_place_id', p.place_id)
-  return `https://www.google.com/maps/search/?${params}`
-}

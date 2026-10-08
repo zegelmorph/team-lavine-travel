@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availableCatalog, groupByCategory, packProgress } from './model'
+import { availableCatalog, findByName, groupByCategory, packProgress, planPackAdd } from './model'
 import type { PackCatalogItem, PackCategory } from '@/lib/types'
 
 const cat = (id: string, name: string, sort_order: number): PackCategory => ({ id, household_id: 'h', name, sort_order })
@@ -50,5 +50,43 @@ describe('availableCatalog', () => {
       ],
     )
     expect(left.map((c) => c.name)).toEqual(['Hat'])
+  })
+})
+
+describe('findByName', () => {
+  it('matches ignoring case and spaces, and never matches blank names', () => {
+    const items = [catalogItem('a', 'Passport'), catalogItem('b', 'Socks')]
+    expect(findByName(items, '  socks ')?.id).toBe('b')
+    expect(findByName(items, 'Sock')).toBeUndefined()
+    expect(findByName(items, '  ')).toBeUndefined()
+  })
+})
+
+describe('planPackAdd', () => {
+  const hat = { ...catalogItem('hat', 'Hat'), category_id: 'clothes', default_qty: 2 }
+  const catalog = [hat]
+
+  it('reuses a saved item already in the chosen category', () => {
+    expect(planPackAdd(catalog, [], { name: 'Hat', catalogId: 'hat' }, 'clothes')).toEqual({ reuse: hat })
+  })
+
+  it('moves a saved item to a different category, keeping its name and quantity', () => {
+    expect(planPackAdd(catalog, [], { name: 'Hat', catalogId: 'hat' }, 'misc')).toEqual({
+      save: { id: 'hat', name: 'Hat', category_id: 'misc', default_qty: 2 },
+    })
+  })
+
+  it('matches a typed name to a saved item ignoring case', () => {
+    expect(planPackAdd(catalog, [], { name: ' hat ', catalogId: null }, 'clothes')).toEqual({ reuse: hat })
+  })
+
+  it('saves a new item, including when its saved entry was deleted meanwhile', () => {
+    const save = { id: undefined, name: 'Scarf', category_id: 'clothes', default_qty: 1 }
+    expect(planPackAdd(catalog, [], { name: 'Scarf ', catalogId: null }, 'clothes')).toEqual({ save })
+    expect(planPackAdd(catalog, [], { name: 'Scarf', catalogId: 'gone' }, 'clothes')).toEqual({ save })
+  })
+
+  it('refuses an item already on the list', () => {
+    expect(planPackAdd(catalog, [{ name: 'HAT' }], { name: 'Hat', catalogId: 'hat' }, 'clothes')).toEqual({ duplicate: true })
   })
 })

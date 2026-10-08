@@ -6,10 +6,7 @@ export interface PackGroup<T> {
 }
 
 /** Items grouped by category in the household's category order, with uncategorized items last under "Other". */
-export function groupByCategory<T extends { category_id: string | null; name: string }>(
-  items: T[],
-  categories: PackCategory[],
-): PackGroup<T>[] {
+export function groupByCategory<T extends { category_id: string | null; name: string }>(items: T[], categories: PackCategory[]): PackGroup<T>[] {
   const known = new Map(categories.map((c) => [c.id, c]))
   const groups = new Map<string | null, T[]>()
   for (const item of items) {
@@ -29,6 +26,37 @@ export function packProgress(items: Pick<PackItem, 'packed'>[]): { packed: numbe
   const packed = items.filter((i) => i.packed).length
   const total = items.length
   return { packed, total, percent: total ? Math.round((packed / total) * 100) : 0 }
+}
+
+/** The entry with this name, ignoring case and surrounding spaces. */
+export function findByName<T extends { name: string }>(items: T[], name: string): T | undefined {
+  const key = name.trim().toLowerCase()
+  return key ? items.find((i) => i.name.trim().toLowerCase() === key) : undefined
+}
+
+export interface CatalogSave {
+  id?: string
+  name: string
+  category_id: string
+  default_qty: number
+}
+
+/**
+ * How to add an item to the trip: reuse its saved entry as is, or save it first (a new item, or a saved one moved to
+ * another category, since the saved list remembers each item's latest category).
+ */
+export function planPackAdd(
+  catalog: PackCatalogItem[],
+  onList: Pick<PackItem, 'name'>[],
+  draft: { name: string; catalogId: string | null },
+  categoryId: string,
+): { duplicate: true } | { reuse: PackCatalogItem } | { save: CatalogSave } {
+  if (findByName(onList, draft.name)) return { duplicate: true }
+  const saved = (draft.catalogId && catalog.find((c) => c.id === draft.catalogId)) || findByName(catalog, draft.name)
+  if (saved && saved.category_id === categoryId) return { reuse: saved }
+  return {
+    save: { id: saved?.id, name: saved?.name ?? draft.name.trim(), category_id: categoryId, default_qty: saved?.default_qty ?? 1 },
+  }
 }
 
 /** Catalog items not already on the list (matched by catalog link or by name, case-insensitively). */

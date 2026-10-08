@@ -25,7 +25,7 @@ const HouseholdContext = createContext<HouseholdState | null>(null)
 export function HouseholdProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { data: households, isLoading, error, refetch, isFetching } = useMyHouseholds()
+  const { data: households, isPending, isPaused, error, refetch, isFetching } = useMyHouseholds()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const touched = useRef<string | null>(null)
 
@@ -58,7 +58,8 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     navigate('/', { replace: true })
   }
 
-  if (isLoading) return <FullPageMessage text="Loading..." />
+  if (isPending && isPaused) return <FullPageMessage text="You're offline and nothing is saved on this device yet. Travel will load once you're back online." />
+  if (isPending) return <FullPageMessage text="Loading..." />
   if (error) return <FullPageMessage text={`Could not load households: ${(error as Error).message}`} />
 
   if (list.length === 0) {

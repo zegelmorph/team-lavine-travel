@@ -21,7 +21,7 @@ export function PillTabs<T extends string>({
           aria-selected={value === id}
           onClick={() => onChange(id)}
           className={cn(
-            'rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
+            'whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-colors max-md:py-2.5',
             value === id ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-500 hover:text-slate-800',
           )}
         >

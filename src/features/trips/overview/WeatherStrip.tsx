@@ -28,6 +28,7 @@ export function WeatherStrip({ days, hint }: { days: WeatherDay[]; hint?: string
               <Icon className={cn('my-1 h-5 w-5', d.source === 'typical' ? 'text-slate-400' : 'text-brand-600')} />
               <span className="num text-xs font-semibold text-slate-800">{formatTemp(d.temp_max_c, unit)}</span>
               <span className="num text-[11px] text-slate-400">{formatTemp(d.temp_min_c, unit)}</span>
+              <span className="mt-0.5 w-full truncate text-[10px] leading-tight text-slate-400">{label}</span>
               {d.precip_prob != null && d.precip_prob >= 20 && (
                 <span className="num mt-0.5 flex items-center gap-0.5 text-[10px] text-sky-600 dark:text-sky-400">
                   <Droplets className="h-2.5 w-2.5" />

@@ -11,7 +11,8 @@ import {
   type TripBundle,
 } from '@/lib/queries'
 import { formatDateRange, nights } from '@/lib/dates'
-import { geocodeCity, googleMapsUrl } from '@/lib/places'
+import { geocodeCity } from '@/lib/places'
+import { googleMapsUrl } from '@/lib/mapLinks'
 import type { Destination, WeatherDay } from '@/lib/types'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -46,6 +47,7 @@ export function DestinationsCard({ trip }: { trip: TripBundle }) {
               <Button
                 variant="ghost"
                 size="sm"
+                needsOnline
                 disabled={refresh.isPending}
                 onClick={() =>
                   refresh.mutate({ force: true }, { onError: (e) => toast.error(`Weather: ${e.message}`) })
@@ -56,7 +58,7 @@ export function DestinationsCard({ trip }: { trip: TripBundle }) {
                 <span className="max-md:hidden">Weather</span>
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={() => setEditing('new')}>
+            <Button variant="outline" size="sm" needsOnline onClick={() => setEditing('new')}>
               <Plus className="h-4 w-4" /> Add
             </Button>
           </span>
@@ -113,7 +115,7 @@ function DestinationRow({
           <div className="flex items-center gap-2">
             <h4 className="truncate text-[15px] font-semibold text-slate-900">{d.name}</h4>
             {maps && (
-              <a href={maps} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-brand-700" title="Open in Google Maps">
+              <a href={maps} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-brand-700 max-md:-m-2.5 max-md:p-2.5" aria-label="Open in Google Maps">
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             )}
@@ -127,10 +129,10 @@ function DestinationRow({
           {d.notes && <p className="mt-1 text-xs text-slate-500">{d.notes}</p>}
         </div>
         <span className="flex shrink-0">
-          <Button variant="ghost" size="icon" onClick={onEdit} title="Edit destination">
+          <Button variant="ghost" size="icon" needsOnline onClick={onEdit} title="Edit destination">
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={onDelete} title="Remove destination">
+          <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Remove destination">
             <Trash2 className="h-4 w-4" />
           </Button>
         </span>
@@ -166,7 +168,7 @@ interface Draft {
   notes: string
 }
 
-function DestinationDialog({
+export function DestinationDialog({
   trip,
   destination,
   onClose,
@@ -275,7 +277,7 @@ function DestinationDialog({
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!draft.name.trim() || badRange || busy}>
+            <Button type="submit" needsOnline disabled={!draft.name.trim() || badRange || busy}>
               {destination ? 'Save' : 'Add destination'}
             </Button>
           </div>

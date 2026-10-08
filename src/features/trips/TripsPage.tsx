@@ -11,18 +11,18 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Label } from '@/components/ui/input'
 import { Fab } from '@/components/ui/fab'
-import { cn, plural } from '@/lib/utils'
+import { MapEmbed } from '@/components/MapEmbed'
+import { NotSavedOffline } from '@/components/Offline'
+import { googleMapsEmbedUrl } from '@/lib/mapLinks'
+import { cn } from '@/lib/utils'
 import { countdown, groupTrips } from './model'
 import { StatusBadge } from './StatusBadge'
 
 export function TripsPage() {
-  const { data: trips, isLoading } = useTrips()
+  const { data: trips, isPending, isPaused } = useTrips()
   const [creating, setCreating] = useState(false)
   const groups = useMemo(() => groupTrips(trips ?? []), [trips])
-  const glanceIds = useMemo(
-    () => (trips ?? []).filter((t) => t.status === 'happening' || t.status === 'planning').map((t) => t.id),
-    [trips],
-  )
+  const glanceIds = useMemo(() => (trips ?? []).filter((t) => t.status === 'happening' || t.status === 'planning').map((t) => t.id), [trips])
   const { data: weather } = useTripsWeather(glanceIds)
   const today = todayISO()
 
@@ -32,13 +32,15 @@ export function TripsPage() {
         title="Trips"
         subtitle="Dream it, plan it, live it."
         actions={
-          <Button onClick={() => setCreating(true)} className="max-md:hidden">
+          <Button needsOnline onClick={() => setCreating(true)} className="max-md:hidden">
             <Plus className="h-4 w-4" /> New trip
           </Button>
         }
       />
 
-      {isLoading ? (
+      {isPending && isPaused ? (
+        <NotSavedOffline />
+      ) : isPending ? (
         <p className="text-slate-400">Loading...</p>
       ) : groups.length === 0 ? (
         <Card className="flex flex-col items-center gap-3 px-6 py-14 text-center">
@@ -47,7 +49,7 @@ export function TripsPage() {
           <p className="max-w-sm text-slate-500">
             Start with a dream destination. Add dates, places to stay and a packing list as the plan comes together.
           </p>
-          <Button onClick={() => setCreating(true)}>
+          <Button needsOnline onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" /> New trip
           </Button>
         </Card>
@@ -57,7 +59,7 @@ export function TripsPage() {
             <h2 className={cn(eyebrow, 'mb-2 px-1')}>
               {TRIP_STATUS_LABELS[g.status]} · {g.trips.length}
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3">
               {g.trips.map((t) => (
                 <TripCard key={t.id} trip={t} today={today} weather={weather?.filter((w) => w.trip_id === t.id)} />
               ))}
@@ -82,41 +84,60 @@ function TripCard({ trip, today, weather }: { trip: TripSummary; today: string; 
   return (
     <Link
       to={`/trips/${trip.id}`}
-      className="group rounded-card border border-slate-200/80 bg-white p-4 shadow-card transition-colors hover:border-brand-300"
+      className="group flex gap-4 rounded-card border border-slate-200/80 bg-white p-4 shadow-card transition-colors hover:border-brand-300 max-md:flex-col"
     >
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="min-w-0 truncate text-base font-semibold text-slate-900 group-hover:text-brand-800">
-          {trip.name}
-        </h3>
-        <StatusBadge status={trip.status} className="shrink-0" />
-      </div>
-      <p className="mt-0.5 text-slate-500">{formatDateRange(trip.start_date, trip.end_date)}</p>
-      {trip.destinations.length > 0 && (
-        <p className="mt-2 flex items-center gap-1.5 truncate text-slate-600">
-          <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-          <span className="truncate">{trip.destinations.join(' → ')}</span>
-        </p>
-      )}
-      <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500">
-        <span className="flex items-center gap-3">
-          {until && trip.status !== 'dreaming' && <span className="font-medium text-brand-700">{until}</span>}
-          {trip.participant_count > 0 && (
-            <span className="flex items-center gap-1">
-              <Users className="h-3.5 w-3.5" /> {plural(trip.participant_count, 'traveler')}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <h3 className="min-w-0 truncate text-base font-semibold text-slate-900 group-hover:text-brand-800">{trip.name}</h3>
+          <StatusBadge status={trip.status} className="shrink-0" />
+          {glance && Icon && (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+              title={describeWeather(glance.weather_code).label}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {describeWeather(glance.weather_code).label} ·
+              <span className="num">
+                {formatTemp(glance.temp_max_c, unit)} / {formatTemp(glance.temp_min_c, unit)}
+              </span>
             </span>
           )}
-        </span>
-        {glance && Icon && (
-          <span className="flex items-center gap-1" title={describeWeather(glance.weather_code).label}>
-            <Icon className="h-4 w-4 text-slate-400" />
-            <span className="num">
-              {formatTemp(glance.temp_max_c, unit)} / {formatTemp(glance.temp_min_c, unit)}
-            </span>
-          </span>
+        </div>
+        <p className="mt-0.5 text-slate-500">{formatDateRange(trip.start_date, trip.end_date)}</p>
+        {trip.destinations.length > 0 && (
+          <p className="mt-2 flex items-center gap-1.5 truncate text-slate-600">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span className="truncate">{trip.destinations.join(' → ')}</span>
+          </p>
         )}
+        {trip.notes && <p className="mt-2 line-clamp-3 whitespace-pre-line text-slate-600">{trip.notes}</p>}
+        <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-3 text-xs text-slate-500">
+          {until && trip.status !== 'dreaming' && <span className="font-medium text-brand-700">{until}</span>}
+          {trip.participants.length > 0 && (
+            <span className="flex min-w-0 items-center gap-1">
+              <Users className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{listNames(trip.participants)}</span>
+            </span>
+          )}
+        </div>
       </div>
+      {trip.destinations.length > 0 && (
+        <div className="-mb-1 flex shrink-0 gap-2 overflow-x-auto pb-1 max-md:-mx-4 max-md:px-4 md:max-w-[50%]">
+          {trip.destinations.map((name, i) => (
+            <figure key={`${name}-${i}`} className="w-44 shrink-0">
+              <MapEmbed title={`Map of ${name}`} src={googleMapsEmbedUrl({ name }, undefined, 11)} className="h-28 rounded-lg" />
+              <figcaption className="mt-1 truncate text-xs text-slate-500">{name}</figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
     </Link>
   )
+}
+
+/** "Jolene", "Jolene and Jessica", "Jolene, Jessica and Sam". */
+function listNames(names: string[]) {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
 const NEW_STATUSES: TripStatus[] = ['dreaming', 'planning']
@@ -145,14 +166,7 @@ function NewTripDialog({ onClose }: { onClose: () => void }) {
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <Label htmlFor="trip-name">Name</Label>
-            <Input
-              id="trip-name"
-              autoFocus
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Summer in Italy"
-            />
+            <Input id="trip-name" autoFocus required value={name} onChange={(e) => setName(e.target.value)} placeholder="Summer in Italy" />
           </div>
           <fieldset>
             <legend className="mb-1.5 text-xs font-medium text-slate-500">Where is it at?</legend>
@@ -180,7 +194,7 @@ function NewTripDialog({ onClose }: { onClose: () => void }) {
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!name.trim() || create.isPending}>
+            <Button type="submit" needsOnline disabled={!name.trim() || create.isPending}>
               Create trip
             </Button>
           </div>

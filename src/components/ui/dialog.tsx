@@ -17,7 +17,7 @@ export const DialogDescription = DialogPrimitive.Description
 const MOBILE_SHEET =
   'max-md:inset-x-0 max-md:bottom-[calc(100%-var(--vv-top,0px)-var(--vv-height,100%))] max-md:top-auto max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:max-h-[min(92dvh,var(--vv-height,100dvh))] max-md:rounded-b-none max-md:p-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))]'
 const MOBILE_FULL =
-  'max-md:inset-x-0 max-md:top-[var(--vv-top,0px)] max-md:bottom-auto max-md:h-[var(--vv-height,100dvh)] max-md:max-h-none max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:overflow-x-hidden max-md:rounded-none max-md:border-0 max-md:p-4 max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pb-0'
+  'max-md:inset-x-0 max-md:top-[var(--vv-top,0px)] max-md:bottom-auto max-md:h-[var(--vv-height,100dvh)] max-md:max-h-none max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:overflow-x-hidden max-md:rounded-none max-md:border-0 max-md:p-4 max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pb-[env(safe-area-inset-bottom)]'
 
 export function DialogContent({
   className,
@@ -52,7 +52,7 @@ export function DialogContent({
         {!hideHeader && (
           <div className="mb-5 flex items-center justify-between max-md:mb-4">
             <DialogPrimitive.Title className="text-base font-semibold text-slate-900">{title}</DialogPrimitive.Title>
-            <DialogPrimitive.Close className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 max-md:p-2.5">
+            <DialogPrimitive.Close className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 max-md:-mr-1.5 max-md:p-3" aria-label="Close">
               <X className="h-4 w-4" />
             </DialogPrimitive.Close>
           </div>

@@ -10,34 +10,31 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Label, Select } from '@/components/ui/input'
 import { confirmAction } from '@/components/ui/confirm'
+import { NotSavedOffline } from '@/components/Offline'
+import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
 import { countdown } from './model'
 import { STATUS_STYLES } from './StatusBadge'
 import { tripRange } from './tripRange'
 import { OverviewTab } from './overview/OverviewTab'
-import { TransportTab } from '@/features/transport/TransportTab'
-import { LodgingTab } from '@/features/lodging/LodgingTab'
 import { ScheduleTab } from '@/features/schedule/ScheduleTab'
-import { PackingTab } from '@/features/packing/PackingTab'
 
 const TABS = [
   ['overview', 'Overview'],
-  ['transport', 'Transport'],
-  ['lodging', 'Lodging'],
   ['schedule', 'Schedule'],
-  ['packing', 'Packing'],
 ] as const
-export type TripTab = (typeof TABS)[number][0]
+type TripTab = (typeof TABS)[number][0]
 
 export function TripPage() {
   const { tripId = '' } = useParams()
-  const { data: trip, isLoading, error } = useTrip(tripId)
+  const { data: trip, isPending, isPaused, error } = useTrip(tripId)
   const [params, setParams] = useSearchParams()
   const tab = (TABS.find(([id]) => id === params.get('tab'))?.[0] ?? 'overview') as TripTab
   const setTab = (id: TripTab) => setParams(id === 'overview' ? {} : { tab: id }, { replace: true })
   useAutoRefreshWeather(tripId, Boolean(trip?.destinations.some((d) => d.lat != null && d.start_date)))
 
-  if (isLoading) return <div className="p-6 text-slate-400">Loading...</div>
+  if (isPending && isPaused) return <NotSavedOffline />
+  if (isPending) return <div className="p-6 text-slate-400">Loading...</div>
   if (error) return <div className="p-6 text-red-700">{(error as Error).message}</div>
   if (!trip) {
     return (
@@ -57,10 +54,7 @@ export function TripPage() {
         <PillTabs value={tab} options={TABS} onChange={setTab} />
       </div>
       {tab === 'overview' && <OverviewTab trip={trip} />}
-      {tab === 'transport' && <TransportTab trip={trip} />}
-      {tab === 'lodging' && <LodgingTab trip={trip} />}
-      {tab === 'schedule' && <ScheduleTab trip={trip} onOpenTab={setTab} />}
-      {tab === 'packing' && <PackingTab trip={trip} />}
+      {tab === 'schedule' && <ScheduleTab trip={trip} onShowOverview={() => setTab('overview')} />}
     </div>
   )
 }
@@ -70,11 +64,12 @@ function TripHeader({ trip }: { trip: TripBundle }) {
   const update = useUpdateTrip(trip.id)
   const remove = useDeleteTrip()
   const [editing, setEditing] = useState(false)
+  const online = useOnline()
   const { start, end } = tripRange(trip)
   const until = countdown(start, end, todayISO())
 
   function setStatus(status: TripStatus) {
-    update.mutate({ status, status_auto: false }, { onError: (e) => toast.error(e.message) })
+    update.mutate({ status }, { onError: (e) => toast.error(e.message) })
   }
 
   async function onDelete() {
@@ -95,28 +90,34 @@ function TripHeader({ trip }: { trip: TripBundle }) {
 
   return (
     <div>
-      <Link to="/" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800">
+      <Link
+        to="/"
+        className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 max-md:-ml-1 max-md:mb-0 max-md:py-2.5 max-md:pl-1 max-md:pr-3 max-md:text-sm"
+      >
         <ChevronLeft className="h-3.5 w-3.5" /> Trips
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">
             <span className="truncate">{trip.name}</span>
-            <Button variant="ghost" size="icon" onClick={() => setEditing(true)} title="Rename trip">
+            <Button variant="ghost" size="icon" needsOnline onClick={() => setEditing(true)} title="Rename trip">
               <Pencil className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete trip" className="-ml-1.5">
+              <Trash2 className="h-4 w-4" />
             </Button>
           </h1>
           <p className="text-slate-500">
             {formatDateRange(start, end)}
-            {until && trip.status !== 'dreaming' && (
-              <span className="ml-2 font-medium text-brand-700">· {until}</span>
-            )}
+            {until && trip.status !== 'dreaming' && <span className="ml-2 font-medium text-brand-700">· {until}</span>}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col items-start gap-1 md:items-end">
           <Select
             aria-label="Status"
+            aria-describedby="status-hint"
             value={trip.status}
+            disabled={!online}
             onChange={(e) => setStatus(e.target.value as TripStatus)}
             className={cn('h-8 rounded-full border-0 pl-3 text-xs font-medium max-md:h-9', STATUS_STYLES[trip.status])}
           >
@@ -126,20 +127,9 @@ function TripHeader({ trip }: { trip: TripBundle }) {
               </option>
             ))}
           </Select>
-          <label
-            className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-500"
-            title="Move to Happening on the first day and Complete after the last, from the destination dates"
-          >
-            <input
-              type="checkbox"
-              checked={trip.status_auto}
-              onChange={(e) => update.mutate({ status_auto: e.target.checked }, { onError: (err) => toast.error(err.message) })}
-            />
-            Auto status
-          </label>
-          <Button variant="ghost" size="icon" onClick={onDelete} title="Delete trip">
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <span id="status-hint" className="text-[11px] text-slate-400">
+            Updates from the destination dates
+          </span>
         </div>
       </div>
       {editing && <EditTripDialog trip={trip} onClose={() => setEditing(false)} />}
@@ -168,7 +158,7 @@ function EditTripDialog({ trip, onClose }: { trip: TripBundle; onClose: () => vo
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!name.trim() || update.isPending}>
+            <Button type="submit" needsOnline disabled={!name.trim() || update.isPending}>
               Save
             </Button>
           </div>

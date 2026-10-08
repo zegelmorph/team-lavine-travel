@@ -15,11 +15,14 @@ import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input, Select } from '@/components/ui/input'
 import { confirmAction } from '@/components/ui/confirm'
+import { NotSavedOffline } from '@/components/Offline'
+import { useOnline } from '@/lib/useOnline'
 import { groupByCategory } from './model'
 
 /** Household packing catalog: the categories and items offered when building a trip's list. */
 export function CatalogSettings() {
-  const { data: categories = [], isLoading } = usePackCategories()
+  const { data: categories = [], isPending, isPaused } = usePackCategories()
+  const online = useOnline()
   const { data: catalog = [] } = usePackCatalog()
   const saveCategory = useSavePackCategory()
   const seed = useSeedPackCatalog()
@@ -43,10 +46,10 @@ export function CatalogSettings() {
     )
   }
 
-  if (isLoading) return <p className="text-slate-400">Loading...</p>
+  if (isPending) return isPaused ? <NotSavedOffline /> : <p className="text-slate-400">Loading...</p>
 
   return (
-    <>
+    <fieldset disabled={!online} className="min-w-0 space-y-4 md:space-y-6">
       <Card>
         <CardHeader
           title="Categories"
@@ -78,7 +81,7 @@ export function CatalogSettings() {
       {shown.map((g) => (
         <CategoryCard key={g.category?.id ?? 'other'} category={g.category} items={g.items} categories={categories} />
       ))}
-    </>
+    </fieldset>
   )
 }
 
@@ -130,7 +133,7 @@ function CategoryCard({
             onBlur={rename}
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             aria-label="Category name"
-            className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-0.5 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus:bg-slate-50 focus:ring-2 focus:ring-brand-500/20"
+            className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-0.5 text-sm font-semibold max-md:py-1.5 max-md:text-base text-slate-800 outline-none hover:bg-slate-50 focus:bg-slate-50 focus:ring-2 focus:ring-brand-500/20"
           />
         ) : (
           <span className="flex-1 px-1 text-sm font-semibold text-slate-800">Other</span>
@@ -168,16 +171,17 @@ function CatalogRow({ item, categories }: { item: PackCatalogItem; categories: P
     )
 
   return (
-    <li className="flex items-center gap-2 px-4 py-1.5">
+    <li className="flex items-center gap-2 px-4 py-1.5 max-md:flex-wrap max-md:gap-y-1 max-md:py-2.5">
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
         onBlur={() => (name.trim() && name.trim() !== item.name ? update({ name }) : setName(item.name))}
         aria-label="Item name"
-        className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-1 text-sm text-slate-800 outline-none hover:bg-slate-50 focus:bg-slate-50 focus:ring-2 focus:ring-brand-500/20"
+        className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-1 text-sm text-slate-800 outline-none max-md:basis-full max-md:text-base hover:bg-slate-50 focus:bg-slate-50 focus:ring-2 focus:ring-brand-500/20"
       />
       <label className="flex items-center gap-1 text-xs text-slate-400" title="Default quantity">
-        ×
+        <span className="md:hidden">Qty</span>
+        <span className="max-md:hidden">×</span>
         <input
           type="number"
           min={1}
@@ -186,14 +190,14 @@ function CatalogRow({ item, categories }: { item: PackCatalogItem; categories: P
             const qty = Math.max(1, Math.floor(Number(e.target.value) || 1))
             if (qty !== item.default_qty) update({ default_qty: qty })
           }}
-          className="num h-7 w-12 rounded-md border border-slate-200 bg-field px-1.5 text-sm text-slate-700"
+          className="num h-7 w-12 rounded-md border border-slate-200 bg-field px-1.5 text-sm text-slate-700 max-md:h-9 max-md:w-14 max-md:text-base"
         />
       </label>
       <Select
         aria-label="Category"
         value={item.category_id ?? ''}
         onChange={(e) => update({ category_id: e.target.value || null })}
-        className="h-7 w-32 text-xs max-md:h-9"
+        className="h-7 w-32 text-xs max-md:h-9 max-md:min-w-0 max-md:flex-1"
       >
         <option value="">Other</option>
         {categories.map((c) => (

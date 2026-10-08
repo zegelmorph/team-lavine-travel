@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase, unwrap } from './supabase'
 import { invokeFunction } from './householdQueries'
+import { useOnline } from './useOnline'
 import { useHousehold } from '@/features/auth/HouseholdProvider'
 import type {
   Destination,
@@ -63,7 +64,11 @@ export interface TripBundle extends Trip {
 }
 
 export function useTrip(tripId: string) {
-  return useQuery({
+  return useQuery(tripQuery(tripId))
+}
+
+function tripQuery(tripId: string) {
+  return queryOptions({
     queryKey: keys.trip(tripId),
     queryFn: async () => {
       const row = unwrap(
@@ -79,21 +84,14 @@ export function useTrip(tripId: string) {
       ) as TripBundle | null
       if (!row) return null
       row.destinations.sort(
-        (a, b) =>
-          a.sort_order - b.sort_order ||
-          (a.start_date ?? '9999').localeCompare(b.start_date ?? '9999') ||
-          a.name.localeCompare(b.name),
+        (a, b) => a.sort_order - b.sort_order || (a.start_date ?? '9999').localeCompare(b.start_date ?? '9999') || a.name.localeCompare(b.name),
       )
       row.participants.sort((a, b) => a.sort_order - b.sort_order || a.display_name.localeCompare(b.display_name))
       row.transport.sort(
-        (a, b) =>
-          (a.depart_date ?? '9999').localeCompare(b.depart_date ?? '9999') ||
-          (a.depart_time ?? '').localeCompare(b.depart_time ?? ''),
+        (a, b) => (a.depart_date ?? '9999').localeCompare(b.depart_date ?? '9999') || (a.depart_time ?? '').localeCompare(b.depart_time ?? ''),
       )
       row.lodging.sort((a, b) => a.check_in.localeCompare(b.check_in))
-      row.events.sort(
-        (a, b) => a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''),
-      )
+      row.events.sort((a, b) => a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''))
       row.packItems.sort((a, b) => a.created_at.localeCompare(b.created_at))
       return row
     },
@@ -115,11 +113,7 @@ export function useCreateTrip() {
   return useMutation({
     mutationFn: async (v: { name: string; status: Trip['status'] }) =>
       unwrap(
-        await supabase
-          .from('travel_trips')
-          .insert({ household_id: household.id, name: v.name.trim(), status: v.status })
-          .select()
-          .single(),
+        await supabase.from('travel_trips').insert({ household_id: household.id, name: v.name.trim(), status: v.status }).select().single(),
       ) as Trip,
     onSuccess: invalidate,
   })
@@ -212,10 +206,26 @@ export function useSaveTripRow<T extends { id: string }>(table: TripTable, tripI
       const { id, ...fields } = row as Record<string, unknown>
       const res = id
         ? await supabase.from(table).update(fields).eq('id', id).select().single()
-        : await supabase.from(table).insert({ ...fields, trip_id: tripId }).select().single()
+        : await supabase
+            .from(table)
+            .insert({ ...fields, trip_id: tripId })
+            .select()
+            .single()
       return unwrap(res) as T
     },
     (rows, row) => (row.id ? rows.map((r) => (r.id === row.id ? { ...r, ...row } : r)) : rows),
+  )
+}
+
+/** Checks or unchecks several packing items in one request. */
+export function useSetPacked(tripId: string) {
+  return useTripRowMutation(
+    'travel_pack_items',
+    tripId,
+    async (v: { ids: string[]; packed: boolean }) => {
+      unwrap(await supabase.from('travel_pack_items').update({ packed: v.packed }).in('id', v.ids))
+    },
+    (rows, v) => rows.map((r) => (v.ids.includes(r.id) ? { ...r, packed: v.packed } : r)),
   )
 }
 
@@ -235,14 +245,42 @@ export function useDeleteTripRow(table: TripTable, tripId: string) {
 // ---------------------------------------------------------------------------------------------------------------
 
 export function useWeather(tripId: string, destinationIds: string[]) {
-  return useQuery({
+  return useQuery(weatherQuery(tripId, destinationIds))
+}
+
+function weatherQuery(tripId: string, destinationIds: string[]) {
+  return queryOptions({
     queryKey: [...keys.weather(tripId), destinationIds],
     enabled: destinationIds.length > 0,
-    queryFn: async () =>
-      unwrap(
-        await supabase.from('travel_weather').select('*').in('destination_id', destinationIds).order('date'),
-      ) as WeatherDay[],
+    queryFn: async () => unwrap(await supabase.from('travel_weather').select('*').in('destination_id', destinationIds).order('date')) as WeatherDay[],
   })
+}
+
+/**
+ * Loads every planning and in-progress trip (and its weather) into the cache while online, so each one opens from
+ * the on-device copy later even with no signal and without having been visited first.
+ */
+export function usePrefetchActiveTrips() {
+  const qc = useQueryClient()
+  const { data: trips } = useTrips()
+  // Packing lists group by these, so keep them in the saved copy too.
+  usePackCategories()
+  usePackCatalog()
+  const ids = (trips ?? []).filter((t) => t.status === 'planning' || t.status === 'happening').map((t) => t.id)
+  const idsKey = ids.join(',')
+  const online = useOnline()
+  useEffect(() => {
+    if (!idsKey || !online) return
+    for (const id of idsKey.split(',')) {
+      void qc
+        .fetchQuery({ ...tripQuery(id), staleTime: 5 * 60 * 1000 })
+        .then((trip) => {
+          const destinationIds = trip?.destinations.map((d) => d.id) ?? []
+          if (destinationIds.length) return qc.prefetchQuery({ ...weatherQuery(id, destinationIds), staleTime: 5 * 60 * 1000 })
+        })
+        .catch(() => {})
+    }
+  }, [qc, idsKey, online])
 }
 
 /** Weather for several trips at once, for the trip cards; each row carries its trip id. */
@@ -286,9 +324,10 @@ export function useRefreshWeather(tripId: string) {
 /** Refreshes stale weather once when a trip opens; the function itself skips anything fetched recently. */
 export function useAutoRefreshWeather(tripId: string, enabled: boolean) {
   const { mutate } = useRefreshWeather(tripId)
+  const online = useOnline()
   useEffect(() => {
-    if (enabled) mutate({})
-  }, [tripId, enabled, mutate])
+    if (enabled && online) mutate({})
+  }, [tripId, enabled, online, mutate])
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -299,8 +338,7 @@ export function useMembers() {
   const { household } = useHousehold()
   return useQuery({
     queryKey: keys.members(household.id),
-    queryFn: async () =>
-      unwrap(await supabase.rpc('household_member_list', { p_household_id: household.id })) as HouseholdMember[],
+    queryFn: async () => unwrap(await supabase.rpc('household_member_list', { p_household_id: household.id })) as HouseholdMember[],
   })
 }
 
@@ -314,12 +352,7 @@ export function usePackCategories() {
     queryKey: keys.packCategories(household.id),
     queryFn: async () =>
       unwrap(
-        await supabase
-          .from('travel_pack_categories')
-          .select('*')
-          .eq('household_id', household.id)
-          .order('sort_order')
-          .order('name'),
+        await supabase.from('travel_pack_categories').select('*').eq('household_id', household.id).order('sort_order').order('name'),
       ) as PackCategory[],
   })
 }
@@ -329,9 +362,7 @@ export function usePackCatalog() {
   return useQuery({
     queryKey: keys.packCatalog(household.id),
     queryFn: async () =>
-      unwrap(
-        await supabase.from('travel_pack_catalog').select('*').eq('household_id', household.id).order('name'),
-      ) as PackCatalogItem[],
+      unwrap(await supabase.from('travel_pack_catalog').select('*').eq('household_id', household.id).order('name')) as PackCatalogItem[],
   })
 }
 
@@ -342,6 +373,13 @@ function useInvalidateCatalog() {
     qc.invalidateQueries({ queryKey: keys.packCategories(household.id) })
     qc.invalidateQueries({ queryKey: keys.packCatalog(household.id) })
   }
+}
+
+/** Puts a saved row in the cached list right away, so a field can select it before the refetch lands. */
+function useStoreSaved<T extends { id: string }>(key: readonly unknown[]) {
+  const qc = useQueryClient()
+  return (row: T) =>
+    qc.setQueryData<T[]>(key, (old) => old && (old.some((r) => r.id === row.id) ? old.map((r) => (r.id === row.id ? row : r)) : [...old, row]))
 }
 
 export function useSeedPackCatalog() {
@@ -358,6 +396,7 @@ export function useSeedPackCatalog() {
 export function useSavePackCategory() {
   const { household } = useHousehold()
   const invalidate = useInvalidateCatalog()
+  const store = useStoreSaved<PackCategory>(keys.packCategories(household.id))
   return useMutation({
     mutationFn: async (v: { id?: string; name: string; sort_order?: number }) => {
       const res = v.id
@@ -369,7 +408,10 @@ export function useSavePackCategory() {
             .single()
       return unwrap(res) as PackCategory
     },
-    onSuccess: invalidate,
+    onSuccess: (row) => {
+      store(row)
+      invalidate()
+    },
   })
 }
 
@@ -386,6 +428,7 @@ export function useDeletePackCategory() {
 export function useSaveCatalogItem() {
   const { household } = useHousehold()
   const invalidate = useInvalidateCatalog()
+  const store = useStoreSaved<PackCatalogItem>(keys.packCatalog(household.id))
   return useMutation({
     mutationFn: async (v: { id?: string; name: string; category_id: string | null; default_qty: number }) => {
       const fields = { name: v.name.trim(), category_id: v.category_id, default_qty: v.default_qty }
@@ -398,7 +441,10 @@ export function useSaveCatalogItem() {
             .single()
       return unwrap(res) as PackCatalogItem
     },
-    onSuccess: invalidate,
+    onSuccess: (row) => {
+      store(row)
+      invalidate()
+    },
   })
 }
 

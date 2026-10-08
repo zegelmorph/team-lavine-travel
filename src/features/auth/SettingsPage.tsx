@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Label } from '@/components/ui/input'
 import { Card, CardHeader, PageHeader } from '@/components/ui/card'
+import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
 
 interface Invite {
@@ -45,15 +46,12 @@ export function SettingsPage() {
   const tab: Tab = SETTINGS_TABS.find(([id]) => id === params.get('tab'))?.[0] ?? 'personal'
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-3 md:space-y-6 md:p-6 lg:p-8">
+    <div className="mx-auto max-w-3xl space-y-4 p-3 pb-10 md:space-y-6 md:p-6 lg:p-8">
       <div>
         <PageHeader title="Settings" />
-        <PillTabs
-          className="mt-3"
-          value={tab}
-          options={SETTINGS_TABS}
-          onChange={(id) => setParams(id === 'personal' ? {} : { tab: id }, { replace: true })}
-        />
+        <div className="-mx-3 mt-3 overflow-x-auto px-3 md:mx-0 md:px-0">
+          <PillTabs value={tab} options={SETTINGS_TABS} onChange={(id) => setParams(id === 'personal' ? {} : { tab: id }, { replace: true })} />
+        </div>
         <p className="mt-3 text-slate-500">{TAB_HINTS[tab](household.name)}</p>
       </div>
       {tab === 'personal' && <PersonalSettings />}
@@ -94,7 +92,7 @@ function PersonalSettings() {
             </span>
           </span>
           <span className="flex shrink-0 gap-2 max-md:w-full max-md:[&>button]:flex-1">
-            <Button variant="outline" onClick={() => setChangingPassword(true)}>
+            <Button variant="outline" needsOnline onClick={() => setChangingPassword(true)}>
               <KeyRound className="h-4 w-4" />
               Reset password
             </Button>
@@ -194,7 +192,7 @@ function PasswordDialog({ email, onClose }: { email: string; onClose: () => void
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" needsOnline disabled={busy}>
               {change.isPending ? 'Saving...' : 'Save password'}
             </Button>
           </div>
@@ -222,6 +220,7 @@ function HouseholdSettings() {
   const [email, setEmail] = useState('')
   const [name, setName] = useState(household.name)
   const [inviting, setInviting] = useState(false)
+  const online = useOnline()
 
   const members = useMembers()
   const invites = useQuery({
@@ -295,7 +294,7 @@ function HouseholdSettings() {
   }
 
   return (
-    <>
+    <fieldset disabled={!online} className="min-w-0 space-y-4 md:space-y-6">
       <Card>
         <CardHeader title="Name" />
         <div className="flex gap-2 p-5 max-md:p-4">
@@ -379,7 +378,7 @@ function HouseholdSettings() {
                   <Button type="button" variant="ghost" onClick={closeInvite}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={!email.trim() || inviteUser.isPending}>
+                  <Button type="submit" needsOnline disabled={!email.trim() || inviteUser.isPending}>
                     Send invite
                   </Button>
                 </div>
@@ -388,8 +387,7 @@ function HouseholdSettings() {
           </Dialog>
         )}
       </Card>
-
-    </>
+    </fieldset>
   )
 }
 
@@ -411,7 +409,7 @@ function ThemePicker() {
           aria-checked={pref === value}
           onClick={() => setPref(value)}
           className={cn(
-            'flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm transition-colors',
+            'flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm transition-colors max-md:py-2.5',
             pref === value
               ? 'bg-white font-medium text-brand-800 shadow-card'
               : 'text-slate-500 hover:text-slate-800',
@@ -442,7 +440,7 @@ function TempUnitPicker() {
           aria-checked={unit === value}
           onClick={() => setTempUnit(value)}
           className={cn(
-            'rounded-lg px-4 py-1.5 text-sm transition-colors',
+            'rounded-lg px-4 py-1.5 text-sm transition-colors max-md:px-5 max-md:py-2.5',
             unit === value ? 'bg-white font-medium text-brand-800 shadow-card' : 'text-slate-500 hover:text-slate-800',
           )}
         >

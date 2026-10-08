@@ -15,7 +15,9 @@ function trip(name: string, status: TripStatus, start: string | null = null, end
     start_date: start,
     end_date: end,
     destinations: [],
+    destination_ids: [],
     participant_count: 0,
+    participants: [],
   }
 }
 

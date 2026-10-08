@@ -31,10 +31,14 @@ let pref = readPref()
 
 const resolve = (): Theme => (pref === 'system' ? (media.matches ? 'dark' : 'light') : pref)
 
+/** Header color (`--color-white`); the iPhone status bar takes it from the theme-color meta. Mirrored in index.html. */
+const BAR_COLORS: Record<Theme, string> = { light: '#ffffff', dark: '#161b17' }
+
 function apply() {
   const theme = resolve()
   document.documentElement.classList.toggle('dark', theme === 'dark')
   document.documentElement.style.colorScheme = theme
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', BAR_COLORS[theme])
   listeners.forEach((l) => l())
 }
 

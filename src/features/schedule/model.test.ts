@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildSchedule, layoutTimed, scheduleDays, scheduleItems, type ScheduleInput, type ScheduleItem } from './model'
+import { buildSchedule, eventMap, layoutTimed, scheduleDays, scheduleItems, type ScheduleInput, type ScheduleItem } from './model'
 import type { Destination, Lodging, Transport, TripEvent } from '@/lib/types'
 
 const dest = (over: Partial<Destination>): Destination => ({
@@ -68,8 +68,14 @@ const event = (over: Partial<TripEvent>): TripEvent => ({
   date: '2026-10-10',
   start_time: null,
   end_time: null,
+  kind: 'museum',
   title: 'Louvre',
   location: null,
+  address: null,
+  place_id: null,
+  lat: null,
+  lng: null,
+  google_maps_url: null,
   notes: null,
   ...over,
 })
@@ -104,8 +110,8 @@ describe('scheduleItems', () => {
 
   it('times check-in and check-out when given', () => {
     const items = scheduleItems({ ...empty, lodging: [stay({ check_in_time: '15:00:00', check_out_time: '11:00:00' })] })
-    expect(items.find((i) => i.kind === 'checkin')).toMatchObject({ date: '2026-10-10', start: 900, end: 930 })
-    expect(items.find((i) => i.kind === 'checkout')).toMatchObject({ date: '2026-10-12', start: 660 })
+    expect(items.find((i) => i.kind === 'checkin')).toMatchObject({ date: '2026-10-10', start: 900, end: 960 })
+    expect(items.find((i) => i.kind === 'checkout')).toMatchObject({ date: '2026-10-12', start: 660, end: 720 })
   })
 
   it('draws a same-day leg as one block from departure to arrival', () => {
@@ -178,6 +184,25 @@ describe('layoutTimed', () => {
     const placed = layoutTimed([t('a', 540, 600), t('b', 550, 700), t('c', 600, 660)])
     const byKey = Object.fromEntries(placed.map((p) => [p.key, [p.lane, p.lanes]]))
     expect(byKey).toEqual({ a: [0, 2], b: [1, 2], c: [0, 2] })
+  })
+})
+
+describe('event maps', () => {
+  it('searches a typed location near that day’s destination, and skips events without one', () => {
+    const items = scheduleItems({
+      ...empty,
+      destinations: [dest({ start_date: '2026-10-09', end_date: '2026-10-11' })],
+      events: [event({ id: 'a', location: 'Le Jules Verne' }), event({ id: 'b' })],
+    })
+    const link = items.find((i) => i.sourceId === 'a')!.mapUrl!
+    expect(new URL(link).searchParams.get('query')).toBe('Le Jules Verne, Paris')
+    expect(items.find((i) => i.sourceId === 'b')!.mapUrl).toBeUndefined()
+  })
+
+  it('maps a typed location only when a destination anchors it', () => {
+    expect(eventMap(event({ location: 'Home' }), [])).toBeNull()
+    const picked = eventMap(event({ location: 'Louvre', address: 'Rue de Rivoli, Paris' }), [])!
+    expect(new URL(picked.embed).searchParams.get('q')).toBe('Louvre, Rue de Rivoli, Paris')
   })
 })
 

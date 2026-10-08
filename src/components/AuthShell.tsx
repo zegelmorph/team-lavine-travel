@@ -6,7 +6,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
   return (
     <div className="relative h-full overflow-y-auto overflow-x-hidden bg-slate-50">
       <div className="pointer-events-none absolute -top-40 left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 rounded-full bg-brand-100/60 blur-3xl" />
-      <div className="flex min-h-full items-center justify-center p-4 py-10">
+      <div className="flex min-h-full items-center justify-center px-4 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
         <div className="relative w-full max-w-sm">
           <div className="mb-7 flex flex-col items-center">
             <Logo className="h-16 w-16" />

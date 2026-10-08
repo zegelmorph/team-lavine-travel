@@ -7,6 +7,8 @@ import { Logo } from './Logo'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { TripsNav } from '@/features/trips/TripsNav'
+import { usePrefetchActiveTrips } from '@/lib/queries'
+import { OfflineBanner } from './Offline'
 
 const NAV: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: '/', label: 'Trips', icon: Plane, end: true },
@@ -23,6 +25,7 @@ export function AppLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   useEffect(() => setDrawerOpen(false), [location.pathname])
+  usePrefetchActiveTrips()
 
   return (
     <div className="flex h-dvh max-md:flex-col">
@@ -55,9 +58,12 @@ export function AppLayout() {
         <HouseholdSwitcher />
       </header>
 
-      <main className="min-h-0 min-w-0 flex-1 overflow-auto">
-        <Outlet />
-      </main>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <OfflineBanner className="shrink-0 border-b border-amber-100 dark:border-amber-900/50" />
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto pb-[env(safe-area-inset-bottom)]">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

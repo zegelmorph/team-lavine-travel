@@ -69,9 +69,7 @@ export function LoginPage() {
   return (
     <AuthShell title={TITLES[mode]}>
       <form onSubmit={onSubmit} className="space-y-4">
-        {mode === 'signup' && (
-          <p className="text-slate-500">You'll need an invitation from the admin or a household owner.</p>
-        )}
+        {mode === 'signup' && <p className="text-slate-500">You'll need an invitation from the admin or a household owner.</p>}
         {mode === 'reset' && <p className="text-slate-500">We'll email you a link to choose a new password.</p>}
         <div>
           <Label htmlFor="email">Email</Label>
@@ -85,7 +83,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={() => switchMode('reset')}
-                  className="mb-1.5 text-xs font-medium text-brand-700"
+                  className="-my-2 mb-0 py-2 text-xs font-medium text-brand-700 max-md:text-sm"
                 >
                   Forgot password?
                 </button>
@@ -102,20 +100,14 @@ export function LoginPage() {
           </div>
         )}
         {message && (
-          <p
-            className={
-              message.kind === 'error'
-                ? 'rounded-lg bg-red-50 px-3 py-2 text-red-700'
-                : 'rounded-lg bg-brand-50 px-3 py-2 text-brand-800'
-            }
-          >
+          <p className={message.kind === 'error' ? 'rounded-lg bg-red-50 px-3 py-2 text-red-700' : 'rounded-lg bg-brand-50 px-3 py-2 text-brand-800'}>
             {message.text}
           </p>
         )}
         <Button type="submit" className="w-full" disabled={busy}>
           {SUBMIT[mode]}
         </Button>
-        <div className="flex justify-between pt-1 text-xs font-medium text-brand-700">
+        <div className="flex justify-between text-xs font-medium text-brand-700 max-md:text-sm [&>button]:py-2.5">
           <button type="button" onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}>
             {mode === 'signin' ? 'Create account' : 'Back to sign in'}
           </button>

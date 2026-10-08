@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@supabase/supabase-js'
-import { pendingPasswordReason, setPendingPasswordReason, supabase, type PasswordReason } from '@/lib/supabase'
+import { offlineSession, pendingPasswordReason, setPendingPasswordReason, supabase, type PasswordReason } from '@/lib/supabase'
+import { claimCache } from '@/lib/queryPersist'
 
 interface AuthState {
   session: Session | null
@@ -25,28 +26,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) require(null)
-      setSession(data.session)
+    // Signing out, or a different user signing in on this browser (an invite link opened on a shared phone), must
+    // not show the previous user's cached data.
+    const apply = (next: Session | null) => {
+      if (claimCache(next?.user.id ?? null)) queryClient.clear()
+      setSession(next)
       setLoading(false)
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      const current = data.session ?? offlineSession()
+      if (!current) require(null)
+      apply(current)
     })
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') require('recovery')
-      if (event === 'SIGNED_OUT') {
-        // The next person to sign in on this browser must not see the previous user's cached data.
-        queryClient.clear()
-        require(null)
-      }
-      setSession(session)
-      setLoading(false)
+      if (event === 'SIGNED_OUT') require(null)
+      apply(event === 'SIGNED_OUT' ? null : (session ?? offlineSession()))
     })
     return () => data.subscription.unsubscribe()
   }, [queryClient, require])
 
-  const value = useMemo(
-    () => ({ session, loading, needsPassword, passwordSet: () => require(null) }),
-    [session, loading, needsPassword, require],
-  )
+  const value = useMemo(() => ({ session, loading, needsPassword, passwordSet: () => require(null) }), [session, loading, needsPassword, require])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

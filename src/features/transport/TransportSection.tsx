@@ -3,19 +3,18 @@ import { ArrowRight, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDeleteTripRow, useSaveTripRow, type TripBundle } from '@/lib/queries'
 import { formatDay, formatTime, localTimeZone, shortZone } from '@/lib/dates'
-import { googleMapsUrl } from '@/lib/places'
+import { googleMapsUrl } from '@/lib/mapLinks'
 import { TRANSPORT_MODES, TRANSPORT_MODE_LABELS, type Transport, type TransportMode } from '@/lib/types'
-import { Card } from '@/components/ui/card'
+import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Label, Select, field } from '@/components/ui/input'
 import { DateInput } from '@/components/ui/date-input'
-import { Fab } from '@/components/ui/fab'
 import { confirmAction } from '@/components/ui/confirm'
 import { PlaceSearch } from '@/components/PlaceSearch'
 import { MODE_FIELDS, MODE_ICONS } from './modes'
 
-export function TransportTab({ trip }: { trip: TripBundle }) {
+export function TransportSection({ trip }: { trip: TripBundle }) {
   const [editing, setEditing] = useState<Transport | 'new' | null>(null)
   const remove = useDeleteTripRow('travel_transport', trip.id)
 
@@ -24,25 +23,28 @@ export function TransportTab({ trip }: { trip: TripBundle }) {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-slate-500">Flights, drives, trains and boats, in order. They show up on the schedule.</p>
-        <Button onClick={() => setEditing('new')} className="max-md:hidden">
-          <Plus className="h-4 w-4" /> Add travel
-        </Button>
-      </div>
+    <Card>
+      <CardHeader
+        title="Travel"
+        actions={
+          <Button variant="outline" size="sm" needsOnline onClick={() => setEditing('new')}>
+            <Plus className="h-4 w-4" /> Add
+          </Button>
+        }
+      />
       {trip.transport.length === 0 ? (
-        <Card className="px-6 py-12 text-center text-slate-500">No travel added yet.</Card>
+        <p className="px-5 py-8 text-center text-slate-500">Flights, drives, trains and boats. They show up on the schedule.</p>
       ) : (
-        trip.transport.map((t) => (
-          <TransportCard key={t.id} leg={t} onEdit={() => setEditing(t)} onDelete={() => onDelete(t)} />
-        ))
+        <ul className="divide-y divide-slate-100">
+          {trip.transport.map((t) => (
+            <TransportRow key={t.id} leg={t} onEdit={() => setEditing(t)} onDelete={() => onDelete(t)} />
+          ))}
+        </ul>
       )}
-      <Fab label="Add travel" onClick={() => setEditing('new')} className="md:hidden" />
       {editing && (
         <TransportDialog trip={trip} leg={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -68,7 +70,7 @@ function Endpoint({
       <div className="flex items-center gap-1.5 truncate font-medium text-slate-800">
         <span className="truncate">{location || '—'}</span>
         {maps && (
-          <a href={maps} target="_blank" rel="noreferrer" className="shrink-0 text-slate-400 hover:text-brand-700" title="Open in Google Maps">
+          <a href={maps} target="_blank" rel="noreferrer" className="shrink-0 text-slate-400 hover:text-brand-700 max-md:-m-2.5 max-md:p-2.5" aria-label="Open in Google Maps">
             <ExternalLink className="h-3 w-3" />
           </a>
         )}
@@ -84,11 +86,11 @@ function Endpoint({
   )
 }
 
-function TransportCard({ leg, onEdit, onDelete }: { leg: Transport; onEdit: () => void; onDelete: () => void }) {
+function TransportRow({ leg, onEdit, onDelete }: { leg: Transport; onEdit: () => void; onDelete: () => void }) {
   const Icon = MODE_ICONS[leg.mode]
   const title = [leg.carrier, leg.number].filter(Boolean).join(' ') || TRANSPORT_MODE_LABELS[leg.mode]
   return (
-    <Card className="p-4">
+    <li className="px-5 py-4 max-md:px-4">
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
           <Icon className="h-5 w-5" />
@@ -100,10 +102,10 @@ function TransportCard({ leg, onEdit, onDelete }: { leg: Transport; onEdit: () =
               {leg.confirmation && <p className="text-xs text-slate-500">Confirmation {leg.confirmation}</p>}
             </div>
             <span className="flex shrink-0">
-              <Button variant="ghost" size="icon" onClick={onEdit} title="Edit">
+              <Button variant="ghost" size="icon" needsOnline onClick={onEdit} title="Edit">
                 <Pencil className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={onDelete} title="Delete">
+              <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete">
                 <Trash2 className="h-4 w-4" />
               </Button>
             </span>
@@ -130,7 +132,7 @@ function TransportCard({ leg, onEdit, onDelete }: { leg: Transport; onEdit: () =
           {leg.notes && <p className="mt-2 text-xs text-slate-500">{leg.notes}</p>}
         </div>
       </div>
-    </Card>
+    </li>
   )
 }
 
@@ -152,7 +154,7 @@ interface Draft {
   notes: string
 }
 
-function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg: Transport | null; onClose: () => void }) {
+export function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg: Transport | null; onClose: () => void }) {
   const save = useSaveTripRow<Transport>('travel_transport', trip.id)
   const firstDest = trip.destinations[0]
   const [draft, setDraft] = useState<Draft>(() => {
@@ -264,7 +266,7 @@ function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg: Transp
                   onPick={(p) => setEnd(end, { location: p.name, place_id: p.placeId })}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-[1fr_7rem_1fr]">
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-[1fr_7rem_1fr]">
                 <div>
                   <Label htmlFor={`t-${end}-date`}>Date</Label>
                   <DateInput
@@ -282,7 +284,7 @@ function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg: Transp
                   <Label htmlFor={`t-${end}-time`}>Time</Label>
                   <Input id={`t-${end}-time`} type="time" value={draft[`${end}_time`]} onChange={(e) => setEnd(end, { time: e.target.value })} />
                 </div>
-                <div className="col-span-2 md:col-span-1">
+                <div className="sm:col-span-2 md:col-span-1">
                   <Label htmlFor={`t-${end}-tz`}>Time zone</Label>
                   {zoneSelect(`t-${end}-tz`, draft[`${end}_tz`], (tz) => setEnd(end, { tz }))}
                 </div>
@@ -298,7 +300,7 @@ function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg: Transp
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={save.isPending}>
+            <Button type="submit" needsOnline disabled={save.isPending}>
               {leg ? 'Save' : 'Add travel'}
             </Button>
           </div>

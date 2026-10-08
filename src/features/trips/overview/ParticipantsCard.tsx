@@ -6,6 +6,7 @@ import type { HouseholdMember, Participant } from '@/lib/types'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useOnline } from '@/lib/useOnline'
 
 /** "jane.doe@x.com" -> "Jane Doe" */
 export function nameFromEmail(email: string): string {
@@ -22,6 +23,7 @@ export function ParticipantsCard({ trip }: { trip: TripBundle }) {
   const save = useSaveTripRow<Participant>('travel_participants', trip.id)
   const remove = useDeleteTripRow('travel_participants', trip.id)
   const [name, setName] = useState('')
+  const online = useOnline()
 
   const joined = new Set(trip.participants.map((p) => p.user_id).filter(Boolean))
   const suggestions = (members ?? []).filter((m) => !joined.has(m.user_id))
@@ -58,38 +60,42 @@ export function ParticipantsCard({ trip }: { trip: TripBundle }) {
                   {p.display_name.charAt(0)}
                 </span>
                 {p.display_name}
-                <button
-                  type="button"
-                  onClick={() => remove.mutate(p.id, { onError: (e) => toast.error(e.message) })}
-                  className="rounded-full p-0.5 text-brand-700/60 hover:bg-brand-100 hover:text-brand-900"
-                  aria-label={`Remove ${p.display_name}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
+                {online && (
+                  <button
+                    type="button"
+                    onClick={() => remove.mutate(p.id, { onError: (e) => toast.error(e.message) })}
+                    className="-my-1 -mr-1.5 flex h-7 w-7 items-center justify-center rounded-full text-brand-700/60 hover:bg-brand-100 hover:text-brand-900 max-md:-my-2 max-md:h-9 max-md:w-9"
+                    aria-label={`Remove ${p.display_name}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         )}
-        {suggestions.length > 0 && (
+        {online && suggestions.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {suggestions.map((m) => (
               <button
                 key={m.user_id}
                 type="button"
                 onClick={() => addMember(m)}
-                className="flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:border-brand-400 hover:text-brand-800"
+                className="flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:border-brand-400 hover:text-brand-800 max-md:px-3 max-md:py-2 max-md:text-sm"
               >
                 <Plus className="h-3 w-3" /> {nameFromEmail(m.email)}
               </button>
             ))}
           </div>
         )}
-        <form onSubmit={onSubmit} className="flex gap-2">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add someone by name" />
-          <Button type="submit" variant="outline" disabled={!name.trim() || save.isPending}>
-            Add
-          </Button>
-        </form>
+        {online && (
+          <form onSubmit={onSubmit} className="flex gap-2">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add someone by name" />
+            <Button type="submit" variant="outline" disabled={!name.trim() || save.isPending}>
+              Add
+            </Button>
+          </form>
+        )}
       </div>
     </Card>
   )

@@ -23,6 +23,11 @@ interface ComboboxProps {
   autoFocus?: boolean
   /** Show the list as soon as the field gets focus instead of on the first keystroke. */
   openOnFocus?: boolean
+  /**
+   * List "Create" first, so it is what Enter, Tab and blur accept, unless an option starts with the typed text.
+   * For fields where new entries are common and a loose match (e.g. "Shirt" in "T-shirts") would be the wrong pick.
+   */
+  preferCreate?: boolean
   /** `inline` is the borderless style used inside register rows. */
   variant?: 'field' | 'inline'
 }
@@ -57,6 +62,7 @@ export function Combobox({
   className,
   autoFocus,
   openOnFocus,
+  preferCreate,
   variant = 'field',
 }: ComboboxProps) {
   const selected = options.find((o) => o.value === value)
@@ -76,8 +82,8 @@ export function Combobox({
   // Category labels display "A › B" but may be typed as "A:B"; compare in the stored form.
   const norm = (s: string) => normalizePath(s).toLowerCase()
   const q = norm(text.trim())
-  const filtered = React.useMemo(() => {
-    if (!q || q === norm(label)) return options.slice(0, 200)
+  const { filtered, prefixMatch } = React.useMemo(() => {
+    if (!q || q === norm(label)) return { filtered: options.slice(0, 200), prefixMatch: true }
     const starts: ComboOption[] = []
     const contains: ComboOption[] = []
     for (const o of options) {
@@ -85,11 +91,12 @@ export function Combobox({
       if (l.startsWith(q) || l.split(':').some((seg) => seg.startsWith(q))) starts.push(o)
       else if (l.includes(q)) contains.push(o)
     }
-    return [...starts, ...contains].slice(0, 200)
+    return { filtered: [...starts, ...contains].slice(0, 200), prefixMatch: starts.length > 0 }
   }, [options, q, label])
 
   const exact = options.some((o) => norm(o.label) === q)
   const canCreate = Boolean(onCreate && q && !exact)
+  const createFirst = canCreate && preferCreate && !prefixMatch
   const typed = dirty && q !== norm(label)
   const [navigated, setNavigated] = React.useState(false)
   /** The list only owns Enter/Escape once the user has typed or arrowed; until then they belong to the form. */
@@ -146,6 +153,16 @@ export function Combobox({
       {e.label}
     </Command.Item>
   ))
+  const createItem = (
+    <Command.Item
+      value="__create__"
+      onMouseDown={(ev) => ev.preventDefault()}
+      onSelect={pick}
+      className="cursor-pointer rounded-lg px-2.5 py-1.5 italic max-md:py-2.5 data-[selected=true]:bg-brand-50 data-[selected=true]:text-brand-900"
+    >
+      Create "{text.trim()}"
+    </Command.Item>
+  )
   /**
    * Tab and blur accept the highlighted match only after typing or arrowing (so hovering or clearing the text
    * doesn't pick something); only Enter or a click runs an extra item.
@@ -166,7 +183,8 @@ export function Combobox({
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <Command shouldFilter={false} value={active} onValueChange={setActive} loop>
+      {/* relative: cmdk's visually hidden label is absolutely positioned and would otherwise stretch the page. */}
+      <Command shouldFilter={false} value={active} onValueChange={setActive} loop className="relative">
         <Popover.Anchor asChild>
           <Command.Input
             ref={inputRef}
@@ -219,11 +237,7 @@ export function Combobox({
               }
               if (e.key === 'ArrowDown' && !open) setOpen(true)
             }}
-            className={cn(
-              'w-full text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400',
-              VARIANTS[variant],
-              className,
-            )}
+            className={cn('w-full text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400', VARIANTS[variant], className)}
           />
         </Popover.Anchor>
         <Popover.Portal>
@@ -242,6 +256,7 @@ export function Combobox({
           >
             <Command.List>
               {extras}
+              {createFirst && createItem}
               {filtered.map((o) => (
                 <Command.Item
                   key={o.value}
@@ -254,19 +269,8 @@ export function Combobox({
                   {o.hint && <span className="shrink-0 text-xs text-slate-400">{o.hint}</span>}
                 </Command.Item>
               ))}
-              {canCreate && (
-                <Command.Item
-                  value="__create__"
-                  onMouseDown={(ev) => ev.preventDefault()}
-                  onSelect={pick}
-                  className="cursor-pointer rounded-lg px-2.5 py-1.5 italic max-md:py-2.5 data-[selected=true]:bg-brand-50 data-[selected=true]:text-brand-900"
-                >
-                  Create "{text.trim()}"
-                </Command.Item>
-              )}
-              {filtered.length === 0 && !canCreate && (
-                <div className="px-2 py-1 text-slate-400">No matches</div>
-              )}
+              {canCreate && !createFirst && createItem}
+              {filtered.length === 0 && !canCreate && <div className="px-2 py-1 text-slate-400">No matches</div>}
             </Command.List>
           </Popover.Content>
         </Popover.Portal>
