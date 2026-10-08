@@ -1,0 +1,230 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+@theme {
+  /* Soft green brand scale */
+  --color-brand-50: #f0f7f2;
+  --color-brand-100: #dcefe2;
+  --color-brand-200: #bfe0ca;
+  --color-brand-300: #93caa6;
+  --color-brand-400: #5fae7f;
+  --color-brand-500: #3f9d68;
+  --color-brand-600: #2f8556;
+  --color-brand-700: #256b46;
+  --color-brand-800: #1e5539;
+  --color-brand-900: #173f2b;
+
+  /* Neutrals with a faint green tint, so every slate-* class reads warm and soft */
+  --color-slate-50: #f7f9f6;
+  --color-slate-100: #eff3ee;
+  --color-slate-200: #e3e9e2;
+  --color-slate-300: #cdd6cb;
+  --color-slate-400: #9ba89a;
+  --color-slate-500: #717f70;
+  --color-slate-600: #566255;
+  --color-slate-700: #3f4a3f;
+  --color-slate-800: #2a332a;
+  --color-slate-900: #1a211b;
+
+  /* Calmer negatives for money and destructive actions */
+  --color-red-50: #fbf1ef;
+  --color-red-600: #b4533f;
+  --color-red-700: #9a4232;
+
+  --font-sans: 'Inter Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /*
+   * Solid fills with white text keep the same colors in both themes; the numbered scales flip in dark mode
+   * (brand-700 becomes a light text green), which would wreck contrast. `white` is the card surface there.
+   */
+  --color-on-brand: #fff;
+  --color-brand-fill: #2f8556;
+  --color-brand-fill-hover: #256b46;
+  --color-danger-fill: #b4533f;
+  --color-danger-fill-hover: #9a4232;
+
+  /* Text-field background; neutral gray in dark mode rather than the green-tinted card surface */
+  --color-field: #fff;
+
+  --radius-card: 1rem;
+  --shadow-card: 0 1px 2px rgb(23 63 43 / 0.04), 0 4px 16px rgb(23 63 43 / 0.04);
+  --shadow-pop: 0 8px 30px rgb(23 63 43 / 0.12);
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Dark theme: the scales are remapped so existing classes keep their meaning. slate-50 is the page,
+ * `white` is the card surface, low brand steps are tinted fills, and high steps are readable text.
+ */
+.dark {
+  --color-white: #161b17;
+  --color-field: #1f2120;
+
+  --color-slate-50: #0f1310;
+  --color-slate-100: #1c231e;
+  --color-slate-200: #28302a;
+  --color-slate-300: #38423a;
+  --color-slate-400: #6f7d70;
+  --color-slate-500: #909d91;
+  --color-slate-600: #afbaaf;
+  --color-slate-700: #c9d2c9;
+  --color-slate-800: #dee5dd;
+  --color-slate-900: #eff3ee;
+
+  --color-brand-50: #172a1f;
+  --color-brand-100: #1d3727;
+  --color-brand-200: #264a33;
+  --color-brand-300: #2f6443;
+  --color-brand-400: #3f8a5c;
+  --color-brand-500: #4fa771;
+  --color-brand-600: #3a9163;
+  --color-brand-700: #72c393;
+  --color-brand-800: #94d4ad;
+  --color-brand-900: #b9e5ca;
+
+  --color-red-50: #2e1b17;
+  --color-red-600: #e48b78;
+  --color-red-700: #eea190;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.2);
+  --shadow-pop: 0 8px 30px rgb(0 0 0 / 0.5);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-sm leading-relaxed text-slate-800 antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  @apply bg-brand-100 text-brand-900;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-slate-300) transparent;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--color-brand-600);
+}
+
+/* Tailwind's preflight resets buttons to the default arrow. */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='tab'],
+  input[type='checkbox']:not(:disabled),
+  input[type='radio']:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* Browsers paint autofilled fields their own blue; an inset shadow is the only way to cover it. */
+input:-webkit-autofill {
+  -webkit-text-fill-color: var(--color-slate-800);
+  box-shadow: 0 0 0 100px var(--color-field) inset;
+  caret-color: var(--color-slate-800);
+}
+input:-webkit-autofill:focus {
+  box-shadow:
+    0 0 0 100px var(--color-field) inset,
+    0 0 0 2px color-mix(in srgb, var(--color-brand-500) 20%, transparent);
+}
+
+/*
+ * iOS Safari zooms the page when focusing a field under 16px. Unlayered so it beats the text-sm utilities;
+ * `.field-lg` opts a field into a larger size.
+ */
+@media (width < 48rem) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  input.field-lg {
+    font-size: 1.875rem;
+  }
+  /* iOS gives native date fields a minimum width that ignores `width: 100%`, so they overflow narrow forms. */
+  input[type='date'] {
+    appearance: none;
+    min-width: 0;
+  }
+  input::-webkit-date-and-time-value {
+    text-align: left;
+  }
+}
+
+/* `DateInput` draws its own calendar button, so hide the browser's. */
+input.no-native-picker::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+/* Replaces the native select arrow with a lighter chevron inset from the right edge. */
+@layer components {
+  .select-chevron {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ba89a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 0.875rem;
+  }
+
+  /* Browsers with customizable <select> (Chromium 135+) get a styled option list; others keep the native one. */
+  @supports (appearance: base-select) {
+    .select-chevron,
+    .select-chevron::picker(select) {
+      appearance: base-select;
+    }
+    .select-chevron {
+      display: inline-flex;
+      align-items: center;
+    }
+    .select-chevron::picker-icon {
+      display: none;
+    }
+    .select-chevron::picker(select) {
+      margin-top: 4px;
+      padding: 6px;
+      border: 1px solid color-mix(in srgb, var(--color-slate-200) 80%, transparent);
+      border-radius: 0.75rem;
+      background: var(--color-white);
+      box-shadow: var(--shadow-pop);
+      font-size: 0.875rem;
+    }
+    .select-chevron option {
+      padding: 0.375rem 0.625rem;
+      border-radius: 0.5rem;
+      color: var(--color-slate-700);
+      cursor: pointer;
+    }
+    .select-chevron option::checkmark {
+      display: none;
+    }
+    .select-chevron option:hover,
+    .select-chevron option:focus-visible {
+      background: var(--color-brand-50);
+      color: var(--color-brand-900);
+      outline: none;
+    }
+    .select-chevron option:checked {
+      font-weight: 500;
+      color: var(--color-brand-800);
+    }
+  }
+}

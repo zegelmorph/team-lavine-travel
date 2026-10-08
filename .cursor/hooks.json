@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/record-edit.mjs",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/review-on-stop.mjs",
+        "timeout": 10,
+        "loop_limit": 2
+      }
+    ]
+  }
+}
