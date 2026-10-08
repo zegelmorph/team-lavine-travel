@@ -143,18 +143,7 @@ export interface Lodging {
   notes: string | null
 }
 
-export type EventKind =
-  | 'show'
-  | 'dinner'
-  | 'lunch'
-  | 'breakfast'
-  | 'drinks'
-  | 'tour'
-  | 'museum'
-  | 'activity'
-  | 'shopping'
-  | 'appointment'
-  | 'other'
+export type EventKind = 'show' | 'dinner' | 'lunch' | 'breakfast' | 'drinks' | 'tour' | 'museum' | 'activity' | 'shopping' | 'appointment' | 'other'
 
 export const EVENT_KINDS: EventKind[] = [
   'show',
@@ -200,6 +189,8 @@ export interface TripEvent {
   lat: number | null
   lng: number | null
   google_maps_url: string | null
+  /** Seat numbers, for shows. */
+  seats: string | null
   notes: string | null
 }
 

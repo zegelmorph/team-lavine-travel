@@ -2,6 +2,7 @@ import * as React from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import { Command } from 'cmdk'
 import { cn, focusNextField, normalizePath } from '@/lib/utils'
+import { useMarkEdited } from './dialog'
 
 export interface ComboOption {
   value: string
@@ -109,11 +110,13 @@ export function Combobox({
     }
   }, [open])
 
+  const markEdited = useMarkEdited()
   const inputRef = React.useRef<HTMLInputElement>(null)
   /** Where focus went when this field was last left, to undo cmdk handing it straight back (see onFocus). */
   const leftTo = React.useRef<{ el: Element; at: number } | null>(null)
 
   function commit(itemValue: string) {
+    markEdited()
     if (itemValue.startsWith('__extra__')) {
       extraItems?.find((e) => `__extra__${e.value}` === itemValue)?.onSelect()
     } else if (itemValue === '__create__') {
@@ -173,6 +176,7 @@ export function Combobox({
     leftTo.current = e.relatedTarget ? { el: e.relatedTarget, at: performance.now() } : null
     if (!open) return
     if (dirty && !text.trim()) {
+      markEdited()
       onChange(null)
     } else if (acceptable) {
       commit(acceptable)

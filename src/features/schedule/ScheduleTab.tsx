@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { BedDouble, CalendarPlus, ExternalLink, LogIn, LogOut, MapPin, Plus } from 'lucide-react'
-import { useWeather, type TripBundle } from '@/lib/queries'
+import { toast } from 'sonner'
+import { useSaveTripRow, useWeather, type TripBundle } from '@/lib/queries'
 import { formatDay, todayISO } from '@/lib/dates'
 import { describeWeather, formatTemp, useTempUnit } from '@/lib/weather'
 import { useIsMobile } from '@/lib/useIsMobile'
@@ -13,7 +14,17 @@ import { MODE_ICONS } from '@/features/transport/modes'
 import { TransportDialog } from '@/features/transport/TransportSection'
 import { LodgingDialog } from '@/features/lodging/LodgingSection'
 import { DestinationDialog } from '@/features/trips/overview/DestinationsPanel'
-import { buildSchedule, firstHour, type ItemKind, type ScheduleDay, type ScheduleItem } from './model'
+import {
+  buildSchedule,
+  clockTime,
+  dropStart,
+  firstHour,
+  movedTimes,
+  type ItemKind,
+  type PlacedItem,
+  type ScheduleDay,
+  type ScheduleItem,
+} from './model'
 import { EventDialog, type EventDraft } from './EventDialog'
 import { EVENT_ICONS } from './eventKinds'
 
@@ -33,12 +44,6 @@ function hourLabel(h: number) {
   if (h === 0) return '12 AM'
   if (h === 12) return 'Noon'
   return h < 12 ? `${h} AM` : `${h - 12} PM`
-}
-
-function clock(minutes: number) {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
 function clockLabel(minutes: number) {
@@ -85,6 +90,13 @@ export function ScheduleTab({ trip, onShowOverview }: { trip: TripBundle; onShow
     }
   }
 
+  const saveEvent = useSaveTripRow<TripEvent>('travel_events', trip.id)
+  function moveEvent(item: ScheduleItem, date: string, start: number) {
+    const event = trip.events.find((e) => e.id === item.sourceId)
+    if (!event) return
+    saveEvent.mutate({ id: event.id, date, ...movedTimes(event, start) }, { onError: (e) => toast.error(e.message) })
+  }
+
   const addEvent = (initial: EventDraft) => setEditing({ kind: 'event', event: null, initial })
   const close = () => setEditing(null)
   const weatherFor = (date: string) => weather?.find((w) => w.date === date)
@@ -106,7 +118,7 @@ export function ScheduleTab({ trip, onShowOverview }: { trip: TripBundle; onShow
       {isMobile ? (
         <Agenda days={days} weatherFor={weatherFor} onOpen={open} onAdd={online ? addEvent : undefined} />
       ) : (
-        <Grid days={days} weatherFor={weatherFor} onOpen={open} onAdd={online ? addEvent : undefined} />
+        <Grid days={days} weatherFor={weatherFor} onOpen={open} onAdd={online ? addEvent : undefined} onMove={online ? moveEvent : undefined} />
       )}
       {editing?.kind === 'event' && (
         <EventDialog tripId={trip.id} destinations={trip.destinations} event={editing.event} initial={editing.initial} onClose={close} />
@@ -125,6 +137,16 @@ interface ViewProps {
   /** Unset while offline, which hides every way to add an event. */
   onAdd?: (draft: EventDraft) => void
 }
+
+interface GridProps extends ViewProps {
+  /** Moves an event to a new day and start time; unset while offline. */
+  onMove?: (item: ScheduleItem, date: string, start: number) => void
+}
+
+/** How far the pointer travels before a press on an event becomes a drag rather than a click. */
+const DRAG_THRESHOLD_PX = 4
+/** While dragging, how close to the top or bottom of the hours the pointer gets before the grid scrolls. */
+const AUTOSCROLL_EDGE_PX = 40
 
 function ItemIcon({ item, className }: { item: ScheduleItem; className?: string }) {
   const Icon =
@@ -187,8 +209,96 @@ function DayWeather({ day }: { day?: WeatherDay }) {
   )
 }
 
-function Grid({ days, weatherFor, onOpen, onAdd }: ViewProps) {
+interface Move {
+  item: PlacedItem
+  /** Minutes between the event's start and the point it was grabbed, so it doesn't jump under the pointer. */
+  grab: number
+  x: number
+  y: number
+  date: string
+  start: number
+  moved: boolean
+}
+
+/** A move retargeted to the day column and snapped start under the pointer. Off either side, the nearest day. */
+function retarget(columns: Map<string, HTMLDivElement>, x: number, y: number, m: Move): Move {
+  const rects = [...columns].map(([date, el]) => ({ date, rect: el.getBoundingClientRect() })).sort((a, b) => a.rect.left - b.rect.left)
+  const hit = rects.find((r) => x < r.rect.right) ?? rects[rects.length - 1]
+  const start = dropStart(((y - hit.rect.top) / HOUR_PX) * 60 - m.grab, m.item.end - m.item.start)
+  return m.moved && hit.date === m.date && start === m.start ? m : { ...m, date: hit.date, start, moved: true }
+}
+
+function Grid({ days, weatherFor, onOpen, onAdd, onMove }: GridProps) {
   const scroller = useRef<HTMLDivElement>(null)
+  const header = useRef<HTMLDivElement>(null)
+  const columnEls = useRef(new Map<string, HTMLDivElement>())
+  const [move, setMove] = useState<Move | null>(null)
+  const pointer = useRef({ x: 0, y: 0 })
+  // The click that ends a drag (or follows Escape) shouldn't also open the event.
+  const swallowClick = useRef(false)
+  const dragged = move?.moved ? move : null
+  const moving = Boolean(dragged)
+
+  useEffect(() => {
+    if (!moving) return
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      swallowClick.current = true
+      setMove(null)
+    }
+    // Each frame: scroll when the pointer is near the top or bottom of the hours, and keep the drop under the pointer.
+    let frame = 0
+    const tick = () => {
+      const el = scroller.current
+      if (el && header.current) {
+        const { y, x } = pointer.current
+        const top = header.current.getBoundingClientRect().bottom
+        const bottom = el.getBoundingClientRect().bottom
+        if (y < top + AUTOSCROLL_EDGE_PX) el.scrollTop -= Math.min(AUTOSCROLL_EDGE_PX, top + AUTOSCROLL_EDGE_PX - y) / 2
+        else if (y > bottom - AUTOSCROLL_EDGE_PX) el.scrollTop += Math.min(AUTOSCROLL_EDGE_PX, y - bottom + AUTOSCROLL_EDGE_PX) / 2
+        setMove((m) => m && retarget(columnEls.current, x, y, m))
+      }
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [moving])
+
+  function onItemPointerDown(e: PointerEvent<HTMLDivElement>, item: PlacedItem) {
+    if (!onMove || item.kind !== 'event' || e.button !== 0 || (e.target as Element).closest('a')) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const top = columnEls.current.get(item.date)!.getBoundingClientRect().top
+    const grab = ((e.clientY - top) / HOUR_PX) * 60 - item.start
+    pointer.current = { x: e.clientX, y: e.clientY }
+    setMove({ item, grab, x: e.clientX, y: e.clientY, date: item.date, start: item.start, moved: false })
+  }
+
+  function onItemPointerMove(e: PointerEvent<HTMLDivElement>) {
+    if (!move) return
+    pointer.current = { x: e.clientX, y: e.clientY }
+    if (!move.moved && Math.hypot(e.clientX - move.x, e.clientY - move.y) < DRAG_THRESHOLD_PX) return
+    const next = retarget(columnEls.current, e.clientX, e.clientY, move)
+    if (next !== move) setMove(next)
+  }
+
+  function onItemPointerUp() {
+    setTimeout(() => (swallowClick.current = false))
+    if (!move) return
+    setMove(null)
+    if (!move.moved) return
+    swallowClick.current = true
+    if (move.date !== move.item.date || move.start !== move.item.start) onMove?.(move.item, move.date, move.start)
+  }
+
+  function onItemPointerCancel() {
+    swallowClick.current = false
+    setMove(null)
+  }
+
   const today = todayISO()
   const startHour = firstHour(days)
 
@@ -238,7 +348,7 @@ function Grid({ days, weatherFor, onOpen, onAdd }: ViewProps) {
     const { start, end } = dragRange(drag)
     setDrag(null)
     setHover(null)
-    onAdd({ date: drag.date, start_time: clock(start), end_time: end >= 24 * 60 ? '23:59' : clock(end) })
+    onAdd({ date: drag.date, start_time: clockTime(start), end_time: clockTime(end) })
   }
 
   function slotFor(date: string) {
@@ -251,7 +361,7 @@ function Grid({ days, weatherFor, onOpen, onAdd }: ViewProps) {
       <div ref={scroller} className="max-h-[calc(100dvh-14rem)] min-h-[28rem] overflow-auto">
         <div className="min-w-fit">
           {/* Header: dates, weather and all-day items. Sticky so it stays put while scrolling hours. */}
-          <div className="sticky top-0 z-20 grid border-b border-slate-200 bg-white" style={{ gridTemplateColumns: columns }}>
+          <div ref={header} className="sticky top-0 z-20 grid border-b border-slate-200 bg-white" style={{ gridTemplateColumns: columns }}>
             <div className="sticky left-0 z-10 bg-white" />
             {days.map((d) => (
               <div key={d.date} className={cn('border-l border-slate-100 px-1.5 pb-1.5 pt-2', d.date === today && 'bg-brand-50/50')}>
@@ -312,6 +422,10 @@ function Grid({ days, weatherFor, onOpen, onAdd }: ViewProps) {
               return (
                 <div
                   key={d.date}
+                  ref={(el) => {
+                    if (el) columnEls.current.set(d.date, el)
+                    else columnEls.current.delete(d.date)
+                  }}
                   onPointerDown={(e) => onPointerDown(e, d.date)}
                   onPointerMove={(e) => onPointerMove(e, d.date)}
                   onPointerUp={onPointerUp}
@@ -343,13 +457,37 @@ function Grid({ days, weatherFor, onOpen, onAdd }: ViewProps) {
                       </span>
                     </div>
                   )}
+                  {dragged?.date === d.date && (
+                    <div
+                      className={cn(
+                        'pointer-events-none absolute inset-x-0.5 z-10 flex flex-col overflow-hidden rounded-md px-1.5 pt-1 text-[11px] leading-tight shadow-md ring-2 ring-brand-400',
+                        KIND_STYLES.event,
+                      )}
+                      style={{
+                        top: (dragged.start / 60) * HOUR_PX + 1,
+                        height: ((dragged.item.end - dragged.item.start) / 60) * HOUR_PX - 2,
+                      }}
+                    >
+                      <span className="flex items-center gap-1 font-medium">
+                        <ItemIcon item={dragged.item} />
+                        <span className="truncate">{dragged.item.title}</span>
+                      </span>
+                      <span className="truncate">{clockLabel(dragged.start)}</span>
+                    </div>
+                  )}
                   {d.timed.map((item) => (
                     <div
                       key={item.key}
-                      {...openOnActivate(() => onOpen(item))}
+                      {...openOnActivate(() => !swallowClick.current && onOpen(item))}
+                      onPointerDown={(e) => onItemPointerDown(e, item)}
+                      onPointerMove={onItemPointerMove}
+                      onPointerUp={onItemPointerUp}
+                      onPointerCancel={onItemPointerCancel}
                       className={cn(
                         'absolute flex cursor-pointer flex-col justify-start overflow-hidden rounded-md px-1.5 pb-0.5 pt-1 text-left text-[11px] leading-tight shadow-sm',
                         KIND_STYLES[item.kind],
+                        onMove && item.kind === 'event' && 'cursor-grab',
+                        dragged?.item.key === item.key && 'cursor-grabbing opacity-40',
                       )}
                       style={{
                         top: (item.start / 60) * HOUR_PX + 1,

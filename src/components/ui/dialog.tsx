@@ -19,6 +19,27 @@ const MOBILE_SHEET =
 const MOBILE_FULL =
   'max-md:inset-x-0 max-md:top-[var(--vv-top,0px)] max-md:bottom-auto max-md:h-[var(--vv-height,100dvh)] max-md:max-h-none max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:overflow-x-hidden max-md:rounded-none max-md:border-0 max-md:p-4 max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pb-[env(safe-area-inset-bottom)]'
 
+const EditedContext = React.createContext<() => void>(() => {})
+
+/**
+ * For controls that change a value without an input or change event (calendar days, list picks, switches), so the
+ * dialog they're in knows it has been edited. Any new click-driven control used in a dialog should call it. A no-op
+ * outside a dialog.
+ */
+export const useMarkEdited = () => React.useContext(EditedContext)
+
+const SHAKE: Keyframe[] = [0, -6, 6, -4, 4, 0].map((x) => ({ transform: `translateX(${x}px)` }))
+const PULSE: Keyframe[] = [
+  { outline: '3px solid transparent' },
+  { outline: '3px solid var(--color-brand-300)' },
+  { outline: '3px solid transparent' },
+]
+
+/**
+ * Once anything inside has been edited, a click on the backdrop no longer closes the dialog (it shakes instead), so
+ * a stray click can't throw the changes away. The close button, Cancel and Escape still close it. "Edited" means any
+ * field was typed in or changed, even if it was then put back.
+ */
 export function DialogContent({
   className,
   title,
@@ -26,6 +47,8 @@ export function DialogContent({
   fullScreenOnMobile,
   hideHeader,
   overlayClassName,
+  onChange,
+  onPointerDownOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   title: string
@@ -35,10 +58,21 @@ export function DialogContent({
   overlayClassName?: string
 }) {
   useVisualViewport()
+  const content = React.useRef<HTMLDivElement>(null)
+  const [edited, setEdited] = React.useState(false)
+  const markEdited = React.useCallback(() => setEdited(true), [])
+
+  function nudge() {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    content.current?.animate(reduced ? PULSE : SHAKE, { duration: reduced ? 600 : 300, easing: 'ease-in-out' })
+  }
+
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay
         className={cn('fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-sm dark:bg-black/50', overlayClassName)}
+        // Keeps focus in the field being typed in when a press on the backdrop is ignored.
+        onMouseDown={(e) => edited && e.preventDefault()}
       />
       <DialogPrimitive.Content
         className={cn(
@@ -47,17 +81,34 @@ export function DialogContent({
           fullScreenOnMobile ? MOBILE_FULL : MOBILE_SHEET,
         )}
         aria-describedby={undefined}
+        ref={content}
+        // React's change events bubble through portals, so this also hears fields inside popovers.
+        onChange={(e) => {
+          markEdited()
+          onChange?.(e)
+        }}
+        onPointerDownOutside={(e) => {
+          onPointerDownOutside?.(e)
+          if (e.defaultPrevented || !edited) return
+          e.preventDefault()
+          nudge()
+        }}
         {...props}
       >
-        {!hideHeader && (
-          <div className="mb-5 flex items-center justify-between max-md:mb-4">
-            <DialogPrimitive.Title className="text-base font-semibold text-slate-900">{title}</DialogPrimitive.Title>
-            <DialogPrimitive.Close className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 max-md:-mr-1.5 max-md:p-3" aria-label="Close">
-              <X className="h-4 w-4" />
-            </DialogPrimitive.Close>
-          </div>
-        )}
-        {children}
+        <EditedContext value={markEdited}>
+          {!hideHeader && (
+            <div className="mb-5 flex items-center justify-between max-md:mb-4">
+              <DialogPrimitive.Title className="text-base font-semibold text-slate-900">{title}</DialogPrimitive.Title>
+              <DialogPrimitive.Close
+                className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 max-md:-mr-1.5 max-md:p-3"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </DialogPrimitive.Close>
+            </div>
+          )}
+          {children}
+        </EditedContext>
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   )

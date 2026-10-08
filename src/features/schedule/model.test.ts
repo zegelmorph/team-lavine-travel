@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { buildSchedule, eventMap, layoutTimed, scheduleDays, scheduleItems, type ScheduleInput, type ScheduleItem } from './model'
+import {
+  buildSchedule,
+  dropStart,
+  eventMap,
+  layoutTimed,
+  movedTimes,
+  scheduleDays,
+  scheduleItems,
+  type ScheduleInput,
+  type ScheduleItem,
+} from './model'
 import type { Destination, Lodging, Transport, TripEvent } from '@/lib/types'
 
 const dest = (over: Partial<Destination>): Destination => ({
@@ -76,6 +86,7 @@ const event = (over: Partial<TripEvent>): TripEvent => ({
   lat: null,
   lng: null,
   google_maps_url: null,
+  seats: null,
   notes: null,
   ...over,
 })
@@ -117,9 +128,7 @@ describe('scheduleItems', () => {
   it('draws a same-day leg as one block from departure to arrival', () => {
     const [item] = scheduleItems({
       ...empty,
-      transport: [
-        leg({ depart_date: '2026-10-10', depart_time: '08:15:00', arrive_date: '2026-10-10', arrive_time: '10:45:00' }),
-      ],
+      transport: [leg({ depart_date: '2026-10-10', depart_time: '08:15:00', arrive_date: '2026-10-10', arrive_time: '10:45:00' })],
     })
     expect(item).toMatchObject({ date: '2026-10-10', start: 495, end: 645, title: 'AA 100 · SEA → CDG' })
   })
@@ -127,9 +136,7 @@ describe('scheduleItems', () => {
   it('splits an overnight leg into departure and arrival', () => {
     const items = scheduleItems({
       ...empty,
-      transport: [
-        leg({ depart_date: '2026-10-09', depart_time: '18:00:00', arrive_date: '2026-10-10', arrive_time: '11:00:00' }),
-      ],
+      transport: [leg({ depart_date: '2026-10-09', depart_time: '18:00:00', arrive_date: '2026-10-10', arrive_time: '11:00:00' })],
     })
     expect(items.map((i) => [i.date, i.subtitle, i.start, i.end])).toEqual([
       ['2026-10-09', 'Departs', 1080, 1140],
@@ -203,6 +210,32 @@ describe('event maps', () => {
     expect(eventMap(event({ location: 'Home' }), [])).toBeNull()
     const picked = eventMap(event({ location: 'Louvre', address: 'Rue de Rivoli, Paris' }), [])!
     expect(new URL(picked.embed).searchParams.get('q')).toBe('Louvre, Rue de Rivoli, Paris')
+  })
+})
+
+describe('movedTimes', () => {
+  it('keeps the event’s length', () => {
+    expect(movedTimes({ start_time: '13:00:00', end_time: '14:30:00' }, 9 * 60 + 15)).toEqual({ start_time: '09:15', end_time: '10:45' })
+  })
+
+  it('pulls an event back so it still ends by midnight', () => {
+    expect(movedTimes({ start_time: '20:00:00', end_time: '22:00:00' }, 23 * 60)).toEqual({ start_time: '22:00', end_time: '23:59' })
+  })
+
+  it('treats an event that runs until midnight as ending at midnight', () => {
+    expect(movedTimes({ start_time: '22:00:00', end_time: '23:59:00' }, 10 * 60)).toEqual({ start_time: '10:00', end_time: '12:00' })
+  })
+
+  it('leaves an event without an end open-ended', () => {
+    expect(movedTimes({ start_time: '08:00:00', end_time: null }, 18 * 60)).toEqual({ start_time: '18:00', end_time: null })
+  })
+})
+
+describe('dropStart', () => {
+  it('snaps to a quarter hour and keeps the block within the day', () => {
+    expect(dropStart(9 * 60 + 8, 60)).toBe(9 * 60 + 15)
+    expect(dropStart(-20, 60)).toBe(0)
+    expect(dropStart(23 * 60 + 40, 90)).toBe(22 * 60 + 30)
   })
 })
 

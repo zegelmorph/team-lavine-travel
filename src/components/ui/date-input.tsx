@@ -17,6 +17,7 @@ import {
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/lib/useIsMobile'
+import { useMarkEdited } from './dialog'
 
 const ISO = 'yyyy-MM-dd'
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
@@ -45,20 +46,9 @@ type Props = Omit<ComponentProps<'input'>, 'value' | 'onChange' | 'type'> & {
  * the app. Focus stays in the input while the calendar is open, like the lookups, so autosave-on-blur rows are unaffected.
  * Phones keep the native picker, which is already a good touch control.
  */
-export function DateInput({
-  value,
-  onChange,
-  openOnFocus,
-  clearable,
-  className,
-  onKeyDown,
-  onFocus,
-  onBlur,
-  onClick,
-  ref,
-  ...props
-}: Props) {
+export function DateInput({ value, onChange, openOnFocus, clearable, className, onKeyDown, onFocus, onBlur, onClick, ref, ...props }: Props) {
   const isMobile = useIsMobile()
+  const markEdited = useMarkEdited()
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(() => parse(value) ?? new Date())
   // Typing or the row's +/-/T shortcuts change the value directly; keep the highlight on it.
@@ -104,6 +94,7 @@ export function DateInput({
   }
 
   function pick(date: Date) {
+    markEdited()
     onChange(format(date, ISO))
     setOpen(false)
   }
@@ -214,6 +205,7 @@ export function DateInput({
             onClear={
               clearable && value
                 ? () => {
+                    markEdited()
                     onChange('')
                     setOpen(false)
                   }
@@ -263,10 +255,7 @@ function Calendar({
         </div>
       </div>
 
-      <div
-        className="grid grid-cols-7 text-center text-[11px] font-medium uppercase tracking-wide text-slate-400"
-        aria-hidden
-      >
+      <div className="grid grid-cols-7 text-center text-[11px] font-medium uppercase tracking-wide text-slate-400" aria-hidden>
         {WEEKDAYS.map((d) => (
           <div key={d} className="py-1">
             {d}
@@ -300,9 +289,7 @@ function Calendar({
               )}
             >
               {format(day, 'd')}
-              {isToday && (
-                <span className={cn('absolute bottom-1 h-1 w-1 rounded-full', selected ? 'bg-white' : 'bg-brand-500')} />
-              )}
+              {isToday && <span className={cn('absolute bottom-1 h-1 w-1 rounded-full', selected ? 'bg-white' : 'bg-brand-500')} />}
             </button>
           )
         })}

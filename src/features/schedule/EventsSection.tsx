@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MapPin, Plus } from 'lucide-react'
+import { Armchair, MapPin, Plus } from 'lucide-react'
 import type { TripBundle } from '@/lib/queries'
 import { formatDay, formatTime } from '@/lib/dates'
 import { EVENT_KIND_LABELS, type TripEvent } from '@/lib/types'
@@ -51,7 +51,13 @@ export function EventsSection({ trip }: { trip: TripBundle }) {
         </div>
       )}
       {editing && (
-        <EventDialog tripId={trip.id} destinations={trip.destinations} event={editing.event} initial={editing.initial} onClose={() => setEditing(null)} />
+        <EventDialog
+          tripId={trip.id}
+          destinations={trip.destinations}
+          event={editing.event}
+          initial={editing.initial}
+          onClose={() => setEditing(null)}
+        />
       )}
     </Card>
   )
@@ -81,6 +87,12 @@ function EventRow({ event: e, trip, onEdit }: { event: TripEvent; trip: TripBund
               <MapPin className="mr-0.5 inline h-3 w-3 align-[-2px]" />
               {e.location}
               {e.address && <span className="text-slate-400"> · {e.address}</span>}
+            </span>
+          )}
+          {e.seats && (
+            <span className="block truncate text-xs text-slate-500">
+              <Armchair className="mr-0.5 inline h-3 w-3 align-[-2px]" aria-label="Seats" />
+              {e.seats}
             </span>
           )}
           {e.notes && <span className="block truncate text-xs text-slate-500">{e.notes}</span>}

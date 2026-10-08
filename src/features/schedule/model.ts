@@ -144,9 +144,7 @@ export function scheduleItems(input: ScheduleInput): ScheduleItem[] {
       sourceId: l.id,
       date: l.check_out,
       title: `Check out · ${l.name}`,
-      ...(l.check_out_time
-        ? block(minutesOf(l.check_out_time), minutesOf(l.check_out_time) + STAY_TIME_MINUTES)
-        : {}),
+      ...(l.check_out_time ? block(minutesOf(l.check_out_time), minutesOf(l.check_out_time) + STAY_TIME_MINUTES) : {}),
     })
   }
 
@@ -260,12 +258,40 @@ export function buildSchedule(input: ScheduleInput): ScheduleDay[] {
     const today = items.filter((i) => i.date === date)
     return {
       date,
-      allDay: today
-        .filter((i) => i.start == null)
-        .sort((a, b) => ALL_DAY_ORDER[a.kind] - ALL_DAY_ORDER[b.kind] || a.title.localeCompare(b.title)),
+      allDay: today.filter((i) => i.start == null).sort((a, b) => ALL_DAY_ORDER[a.kind] - ALL_DAY_ORDER[b.kind] || a.title.localeCompare(b.title)),
       timed: layoutTimed(today),
     }
   })
+}
+
+/** `HH:mm` for minutes since midnight; the end of the day is written as 23:59. */
+export function clockTime(minutes: number): string {
+  if (minutes >= DAY_END) return '23:59'
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+export const SNAP_MINUTES = 15
+
+/** Where a block `length` minutes long lands when dropped at `minutes`: snapped, and kept within the day. */
+export function dropStart(minutes: number, length: number): number {
+  return Math.max(0, Math.min(DAY_END - length, Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES))
+}
+
+/** 23:59 is how the end of the day is stored, so it counts as midnight. */
+function endMinutes(time: string): number {
+  const m = minutesOf(time)
+  return m >= DAY_END - 1 ? DAY_END : m
+}
+
+/**
+ * New times for an event dragged to start at `start`. It keeps its length and is pulled earlier if it would run past
+ * midnight. An event with no end (or one that ends before it starts) keeps no end.
+ */
+export function movedTimes(e: Pick<TripEvent, 'start_time' | 'end_time'>, start: number): { start_time: string; end_time: string | null } {
+  const from = e.start_time ? minutesOf(e.start_time) : 0
+  const length = e.end_time && endMinutes(e.end_time) >= from ? endMinutes(e.end_time) - from : null
+  const begin = Math.max(0, Math.min(start, DAY_END - (length ?? 0)))
+  return { start_time: clockTime(begin), end_time: length == null ? null : clockTime(begin + length) }
 }
 
 /** Earliest hour worth scrolling to: the first timed item across the trip, capped to a sensible morning. */

@@ -59,7 +59,7 @@ export function EventDialog({
   const [allDay, setAllDay] = useState(event ? !event.start_time : !initial?.start_time)
   const [start, setStart] = useState(event?.start_time?.slice(0, 5) ?? initial?.start_time ?? '09:00')
   const [end, setEnd] = useState(event?.end_time?.slice(0, 5) ?? initial?.end_time ?? '')
-  const [kind, setKind] = useState<EventKind>(event?.kind ?? 'other')
+  const [kind, setKind] = useState<EventKind>(event?.kind ?? 'show')
   const [location, setLocation] = useState(event?.location ?? '')
   const [place, setPlace] = useState<Place>(() => ({
     address: event?.address ?? null,
@@ -68,6 +68,7 @@ export function EventDialog({
     lng: event?.lng ?? null,
     google_maps_url: event?.google_maps_url ?? null,
   }))
+  const [seats, setSeats] = useState(event?.seats ?? '')
   const [notes, setNotes] = useState(event?.notes ?? '')
   // Settle typing before the iframe reloads.
   const [mapLocation, setMapLocation] = useState(location)
@@ -92,6 +93,7 @@ export function EventDialog({
         end_time: allDay || !end ? null : end,
         location: location.trim() || null,
         ...(location.trim() ? place : NO_PLACE),
+        seats: kind === 'show' ? seats.trim() || null : null,
         notes: notes.trim() || null,
       },
       { onSuccess: onClose, onError: (err) => toast.error(err.message) },
@@ -122,6 +124,12 @@ export function EventDialog({
               <Label htmlFor="ev-title">What</Label>
               <Input id="ev-title" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder={TITLE_HINTS[kind]} />
             </div>
+            {kind === 'show' && (
+              <div>
+                <Label htmlFor="ev-seats">Seats</Label>
+                <Input id="ev-seats" value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="Row F, seats 101–102" />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 sm:col-span-1">
                 <Label htmlFor="ev-date">Date</Label>
