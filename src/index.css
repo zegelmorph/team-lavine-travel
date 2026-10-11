@@ -97,10 +97,11 @@ body,
   height: 100%;
 }
 
-/* Only the app's own scroll areas move; the page itself doesn't rubber-band in home-screen mode. */
+/* Only the app's own scroll areas move; the page itself never scrolls or rubber-bands in home-screen mode. */
 html,
 body {
   overscroll-behavior: none;
+  overflow: hidden;
 }
 
 body {

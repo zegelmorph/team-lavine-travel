@@ -386,17 +386,6 @@ function useStoreSaved<T extends { id: string }>(key: readonly unknown[]) {
     qc.setQueryData<T[]>(key, (old) => old && (old.some((r) => r.id === row.id) ? old.map((r) => (r.id === row.id ? row : r)) : [...old, row]))
 }
 
-export function useSeedPackCatalog() {
-  const { household } = useHousehold()
-  const invalidate = useInvalidateCatalog()
-  return useMutation({
-    mutationFn: async () => {
-      unwrap(await supabase.rpc('travel_seed_pack_catalog', { p_household_id: household.id }))
-    },
-    onSuccess: invalidate,
-  })
-}
-
 export function useSavePackCategory() {
   const { household } = useHousehold()
   const invalidate = useInvalidateCatalog()
@@ -419,23 +408,17 @@ export function useSavePackCategory() {
   })
 }
 
-export function useDeletePackCategory() {
-  const invalidate = useInvalidateCatalog()
-  return useMutation({
-    mutationFn: async (id: string) => {
-      unwrap(await supabase.from('travel_pack_categories').delete().eq('id', id))
-    },
-    onSuccess: invalidate,
-  })
-}
-
 export function useSaveCatalogItem() {
   const { household } = useHousehold()
   const invalidate = useInvalidateCatalog()
   const store = useStoreSaved<PackCatalogItem>(keys.packCatalog(household.id))
   return useMutation({
-    mutationFn: async (v: { id?: string; name: string; category_id: string | null; default_qty: number }) => {
-      const fields = { name: v.name.trim(), category_id: v.category_id, default_qty: v.default_qty }
+    mutationFn: async (v: { id?: string; name: string; category_id: string | null; in_cabinet?: boolean }) => {
+      const fields = {
+        name: v.name.trim(),
+        category_id: v.category_id,
+        ...(v.in_cabinet === undefined ? {} : { in_cabinet: v.in_cabinet }),
+      }
       const res = v.id
         ? await supabase.from('travel_pack_catalog').update(fields).eq('id', v.id).select().single()
         : await supabase

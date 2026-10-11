@@ -172,9 +172,8 @@ export function Combobox({
    */
   const acceptable = engaged && (q || navigated) && active && !active.startsWith('__extra__') ? active : ''
 
-  function handleBlur(e: React.FocusEvent) {
-    leftTo.current = e.relatedTarget ? { el: e.relatedTarget, at: performance.now() } : null
-    if (!open) return
+  /** Leaving the field clears the value if the text was emptied, or accepts the highlighted match. */
+  function acceptOnLeave() {
     if (dirty && !text.trim()) {
       markEdited()
       onChange(null)
@@ -183,6 +182,11 @@ export function Combobox({
       return
     }
     setOpen(false)
+  }
+
+  function handleBlur(e: React.FocusEvent) {
+    leftTo.current = e.relatedTarget ? { el: e.relatedTarget, at: performance.now() } : null
+    if (open) acceptOnLeave()
   }
 
   return (
@@ -253,6 +257,10 @@ export function Combobox({
             onEscapeKeyDown={(e) => e.preventDefault()}
             onInteractOutside={(e) => {
               if ((e.target as HTMLElement).closest('[cmdk-input]')) e.preventDefault()
+            }}
+            // Radix closes the list on pointer down, before the input's blur would see it open.
+            onPointerDownOutside={(e) => {
+              if (!(e.target as HTMLElement).closest('[cmdk-input]')) acceptOnLeave()
             }}
             sideOffset={4}
             collisionPadding={8}

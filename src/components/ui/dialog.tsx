@@ -47,6 +47,7 @@ export function DialogContent({
   fullScreenOnMobile,
   hideHeader,
   overlayClassName,
+  guardEdits = true,
   onChange,
   onPointerDownOutside,
   ...props
@@ -56,11 +57,14 @@ export function DialogContent({
   /** Drop the title row and close button, for dialogs that render their own `DialogTitle`. */
   hideHeader?: boolean
   overlayClassName?: string
+  /** Off for dialogs that save each change as it's made, so there's nothing for a backdrop click to throw away. */
+  guardEdits?: boolean
 }) {
   useVisualViewport()
   const content = React.useRef<HTMLDivElement>(null)
-  const [edited, setEdited] = React.useState(false)
-  const markEdited = React.useCallback(() => setEdited(true), [])
+  const [changed, setChanged] = React.useState(false)
+  const edited = guardEdits && changed
+  const markEdited = React.useCallback(() => setChanged(true), [])
 
   function nudge() {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches

@@ -38,7 +38,6 @@ export interface CatalogSave {
   id?: string
   name: string
   category_id: string
-  default_qty: number
 }
 
 /**
@@ -54,9 +53,15 @@ export function planPackAdd(
   if (findByName(onList, draft.name)) return { duplicate: true }
   const saved = (draft.catalogId && catalog.find((c) => c.id === draft.catalogId)) || findByName(catalog, draft.name)
   if (saved && saved.category_id === categoryId) return { reuse: saved }
-  return {
-    save: { id: saved?.id, name: saved?.name ?? draft.name.trim(), category_id: categoryId, default_qty: saved?.default_qty ?? 1 },
-  }
+  return { save: { id: saved?.id, name: saved?.name ?? draft.name.trim(), category_id: categoryId } }
+}
+
+/** Travel cabinet items still to consider for this trip: in the cabinet and not on the list yet. */
+export function cabinetToReview(catalog: PackCatalogItem[], items: Pick<PackItem, 'catalog_item_id' | 'name'>[]) {
+  return availableCatalog(
+    catalog.filter((c) => c.in_cabinet),
+    items,
+  )
 }
 
 /** Catalog items not already on the list (matched by catalog link or by name, case-insensitively). */

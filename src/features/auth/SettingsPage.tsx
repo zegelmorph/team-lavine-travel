@@ -30,14 +30,16 @@ interface Invite {
 const SETTINGS_TABS = [
   ['personal', 'Personal'],
   ['household', 'Household'],
-  ['packing', 'Packing list'],
+  ['packing', 'Packing items'],
+  ['cabinet', 'Travel cabinet'],
 ] as const
 type Tab = (typeof SETTINGS_TABS)[number][0]
 
 const TAB_HINTS: Record<Tab, (household: string) => string> = {
   personal: () => "Just for you; other household members aren't affected.",
   household: (name) => `Everyone in ${name} shares its trips. Members also share the Team Lavine finance app.`,
-  packing: (name) => `Items and categories ${name} picks from when building a trip's packing list.`,
+  packing: (name) => `Items ${name} picks from when building a trip's packing list. Set how many to bring on each trip.`,
+  cabinet: (name) => `What ${name} keeps in the travel cabinet. When packing for a trip, check off what you're taking and it moves to the list.`,
 }
 
 export function SettingsPage() {
@@ -56,7 +58,8 @@ export function SettingsPage() {
       </div>
       {tab === 'personal' && <PersonalSettings />}
       {tab === 'household' && <HouseholdSettings key={household.id} />}
-      {tab === 'packing' && <CatalogSettings key={household.id} />}
+      {tab === 'packing' && <CatalogSettings key={`packing-${household.id}`} list="packing" />}
+      {tab === 'cabinet' && <CatalogSettings key={`cabinet-${household.id}`} list="cabinet" />}
     </div>
   )
 }

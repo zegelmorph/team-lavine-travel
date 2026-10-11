@@ -208,12 +208,14 @@ export interface PackCategory {
   sort_order: number
 }
 
+/** The table still has a `default_qty` column; it's unused, since quantities are set per trip. */
 export interface PackCatalogItem {
   id: string
   household_id: string
   category_id: string | null
   name: string
-  default_qty: number
+  /** Which list it's on: the travel cabinet (a checklist on every trip) or packing items (offered when adding to a trip). */
+  in_cabinet: boolean
 }
 
 export interface PackItem {

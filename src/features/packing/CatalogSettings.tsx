@@ -1,214 +1,283 @@
-import { useState, type FormEvent } from 'react'
-import { Plus, Sparkles, Trash2 } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  useDeleteCatalogItem,
-  useDeletePackCategory,
-  usePackCatalog,
-  usePackCategories,
-  useSaveCatalogItem,
-  useSavePackCategory,
-  useSeedPackCatalog,
-} from '@/lib/queries'
+import { useDeleteCatalogItem, usePackCatalog, usePackCategories, useSaveCatalogItem, useSavePackCategory } from '@/lib/queries'
 import type { PackCatalogItem, PackCategory } from '@/lib/types'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input, Select } from '@/components/ui/input'
+import { Combobox, type ComboOption } from '@/components/ui/combobox'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Input, Label } from '@/components/ui/input'
 import { confirmAction } from '@/components/ui/confirm'
 import { NotSavedOffline } from '@/components/Offline'
 import { useOnline } from '@/lib/useOnline'
-import { groupByCategory } from './model'
+import { cn } from '@/lib/utils'
+import { findByName, groupByCategory } from './model'
 
-/** Household packing catalog: the categories and items offered when building a trip's list. */
-export function CatalogSettings() {
+const LISTS = {
+  packing: {
+    title: 'Packing items',
+    empty: 'No packing items yet. Add things you often bring, like clothes, toiletries and chargers.',
+  },
+  cabinet: {
+    title: 'Travel cabinet',
+    empty: 'Nothing in the cabinet yet. Add what you keep in it, like adapters, first aid or travel-size toiletries.',
+  },
+}
+
+type ListKind = keyof typeof LISTS
+
+/**
+ * One of the household's two lookup lists, grouped by category: packing items (offered when adding to a trip's list)
+ * or the travel cabinet (offered as a checklist on every trip). Categories are shared by both.
+ */
+export function CatalogSettings({ list }: { list: ListKind }) {
   const { data: categories = [], isPending, isPaused } = usePackCategories()
-  const online = useOnline()
   const { data: catalog = [] } = usePackCatalog()
-  const saveCategory = useSavePackCategory()
-  const seed = useSeedPackCatalog()
-  const [newCategory, setNewCategory] = useState('')
-  const groups = groupByCategory(catalog, categories)
-  // Empty categories still need a card so items can be added to them.
-  const shown = [
-    ...categories
-      .slice()
-      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
-      .map((c) => ({ category: c as PackCategory | null, items: groups.find((g) => g.category?.id === c.id)?.items ?? [] })),
-    ...groups.filter((g) => g.category === null),
-  ]
-
-  function addCategory(e: FormEvent) {
-    e.preventDefault()
-    if (!newCategory.trim()) return
-    saveCategory.mutate(
-      { name: newCategory, sort_order: categories.length + 1 },
-      { onSuccess: () => setNewCategory(''), onError: (err) => toast.error(err.message) },
-    )
-  }
+  const online = useOnline()
+  const cabinet = list === 'cabinet'
+  const items = catalog.filter((c) => c.in_cabinet === cabinet)
+  const groups = groupByCategory(items, categories)
+  const [editing, setEditing] = useState<PackCatalogItem | 'new' | null>(null)
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
+  const toggle = (key: string) =>
+    setCollapsed((s) => {
+      const next = new Set(s)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
 
   if (isPending) return isPaused ? <NotSavedOffline /> : <p className="text-slate-400">Loading...</p>
 
   return (
-    <fieldset disabled={!online} className="min-w-0 space-y-4 md:space-y-6">
+    <fieldset disabled={!online} className="min-w-0">
       <Card>
         <CardHeader
-          title="Categories"
+          title={LISTS[list].title}
           actions={
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={seed.isPending}
-              onClick={() =>
-                seed.mutate(undefined, {
-                  onSuccess: () => toast.success('Starter items added'),
-                  onError: (err) => toast.error(err.message),
-                })
-              }
-              title="Adds any starter categories and items you don't already have"
-            >
-              <Sparkles className="h-3.5 w-3.5" /> Add starter items
+            <Button size="sm" onClick={() => setEditing('new')}>
+              <Plus className="h-4 w-4" /> Add
             </Button>
           }
         />
-        <form onSubmit={addCategory} className="flex gap-2 p-4">
-          <Input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="New category" />
-          <Button type="submit" variant="outline" disabled={!newCategory.trim() || saveCategory.isPending}>
-            <Plus className="h-4 w-4" /> Add
-          </Button>
-        </form>
+        {groups.length === 0 ? (
+          <p className="px-5 py-8 text-center text-slate-500">{LISTS[list].empty}</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {groups.map((g) => {
+              const key = g.category?.id ?? 'other'
+              const open = !collapsed.has(key)
+              return (
+                <section key={key}>
+                  <CategoryHeading category={g.category} open={open} onToggle={() => toggle(key)} />
+                  {open && (
+                    <ul className="pb-1.5 pl-6 max-md:pl-4">
+                      {g.items.map((item) => (
+                        <ItemRow key={item.id} item={item} onEdit={() => setEditing(item)} />
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )
+            })}
+          </div>
+        )}
       </Card>
-
-      {shown.map((g) => (
-        <CategoryCard key={g.category?.id ?? 'other'} category={g.category} items={g.items} categories={categories} />
-      ))}
+      {editing && (
+        <ItemDialog item={editing === 'new' ? null : editing} list={list} items={items} categories={categories} onClose={() => setEditing(null)} />
+      )}
     </fieldset>
   )
 }
 
-function CategoryCard({
-  category,
-  items,
-  categories,
-}: {
-  category: PackCategory | null
-  items: PackCatalogItem[]
-  categories: PackCategory[]
-}) {
-  const saveCategory = useSavePackCategory()
-  const removeCategory = useDeletePackCategory()
-  const saveItem = useSaveCatalogItem()
+/** Toggles the category open or closed. The pencil renames it, which applies to both lists. */
+function CategoryHeading({ category, open, onToggle }: { category: PackCategory | null; open: boolean; onToggle: () => void }) {
+  const save = useSavePackCategory()
+  const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(category?.name ?? '')
-  const [newItem, setNewItem] = useState('')
+  const label = category?.name ?? 'Other'
 
   function rename() {
+    setRenaming(false)
     if (!category || !name.trim() || name.trim() === category.name) return setName(category?.name ?? '')
-    saveCategory.mutate({ id: category.id, name }, { onError: (e) => toast.error(e.message) })
+    save.mutate({ id: category.id, name }, { onError: (e) => toast.error(e.message) })
   }
 
-  async function onDelete() {
-    if (!category) return
-    const ok = await confirmAction({
-      title: `Delete ${category.name}?`,
-      message: 'Its items stay in the catalog and on packing lists, filed under Other.',
-    })
-    if (ok) removeCategory.mutate(category.id, { onError: (e) => toast.error(e.message) })
-  }
-
-  function addItem(e: FormEvent) {
-    e.preventDefault()
-    if (!newItem.trim()) return
-    saveItem.mutate(
-      { name: newItem, category_id: category?.id ?? null, default_qty: 1 },
-      { onSuccess: () => setNewItem(''), onError: (err) => toast.error(err.message) },
-    )
-  }
-
-  return (
-    <Card>
-      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
-        {category ? (
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={rename}
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            aria-label="Category name"
-            className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-0.5 text-sm font-semibold max-md:py-1.5 max-md:text-base text-slate-800 outline-none hover:bg-slate-50 focus:bg-slate-50 focus:ring-2 focus:ring-brand-500/20"
-          />
-        ) : (
-          <span className="flex-1 px-1 text-sm font-semibold text-slate-800">Other</span>
-        )}
-        <span className="num text-xs text-slate-400">{items.length}</span>
-        {category && (
-          <Button variant="ghost" size="icon" onClick={onDelete} title="Delete category">
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
+  if (renaming)
+    return (
+      <div className="px-4 py-1.5 max-md:px-3">
+        <Input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={rename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            if (e.key === 'Escape') {
+              setName(category?.name ?? '')
+              setRenaming(false)
+            }
+          }}
+          aria-label="Category name"
+        />
       </div>
-      <ul className="divide-y divide-slate-100">
-        {items.map((item) => (
-          <CatalogRow key={item.id} item={item} categories={categories} />
-        ))}
-      </ul>
-      <form onSubmit={addItem} className="flex gap-2 p-3">
-        <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Add an item" />
-        <Button type="submit" variant="ghost" disabled={!newItem.trim() || saveItem.isPending}>
-          <Plus className="h-4 w-4" />
+    )
+  return (
+    <h4 className="group flex items-center text-xs font-semibold text-slate-600 hover:bg-slate-50 max-md:text-sm">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex min-w-0 items-center gap-2 py-2.5 pl-4 pr-1 text-left max-md:py-3.5 max-md:pl-3"
+      >
+        <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform', open && 'rotate-90')} />
+        <span className="truncate uppercase tracking-wide">{label}</span>
+      </button>
+      {category && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0 text-slate-400 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+          onClick={() => setRenaming(true)}
+          title={`Rename ${label}`}
+        >
+          <Pencil className="h-3 w-3" />
         </Button>
-      </form>
-    </Card>
+      )}
+      {/* The rest of the row toggles too; the labelled button above is the one for keyboard and screen readers. */}
+      <button type="button" tabIndex={-1} aria-hidden onClick={onToggle} className="flex-1 self-stretch" />
+    </h4>
   )
 }
 
-function CatalogRow({ item, categories }: { item: PackCatalogItem; categories: PackCategory[] }) {
-  const save = useSaveCatalogItem()
+function ItemRow({ item, onEdit }: { item: PackCatalogItem; onEdit: () => void }) {
   const remove = useDeleteCatalogItem()
-  const [name, setName] = useState(item.name)
-  const update = (patch: Partial<PackCatalogItem>) =>
-    save.mutate(
-      { id: item.id, name: item.name, category_id: item.category_id, default_qty: item.default_qty, ...patch },
-      { onError: (e) => toast.error(e.message) },
-    )
-
   return (
-    <li className="flex items-center gap-2 px-4 py-1.5 max-md:flex-wrap max-md:gap-y-1 max-md:py-2.5">
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={() => (name.trim() && name.trim() !== item.name ? update({ name }) : setName(item.name))}
-        aria-label="Item name"
-        className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-1 text-sm text-slate-800 outline-none max-md:basis-full max-md:text-base hover:bg-slate-50 focus:bg-slate-50 focus:ring-2 focus:ring-brand-500/20"
-      />
-      <label className="flex items-center gap-1 text-xs text-slate-400" title="Default quantity">
-        <span className="md:hidden">Qty</span>
-        <span className="max-md:hidden">×</span>
-        <input
-          type="number"
-          min={1}
-          value={item.default_qty}
-          onChange={(e) => {
-            const qty = Math.max(1, Math.floor(Number(e.target.value) || 1))
-            if (qty !== item.default_qty) update({ default_qty: qty })
-          }}
-          className="num h-7 w-12 rounded-md border border-slate-200 bg-field px-1.5 text-sm text-slate-700 max-md:h-9 max-md:w-14 max-md:text-base"
-        />
-      </label>
-      <Select
-        aria-label="Category"
-        value={item.category_id ?? ''}
-        onChange={(e) => update({ category_id: e.target.value || null })}
-        className="h-7 w-32 text-xs max-md:h-9 max-md:min-w-0 max-md:flex-1"
+    <li className="flex items-center gap-1 px-4 max-md:px-3">
+      <button
+        type="button"
+        onClick={onEdit}
+        className="min-w-0 flex-1 truncate rounded-md px-1 py-1.5 text-left text-sm text-slate-800 hover:bg-slate-50 max-md:py-2.5 max-md:text-base"
       >
-        <option value="">Other</option>
-        {categories.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </Select>
-      <Button variant="ghost" size="icon" onClick={() => remove.mutate(item.id, { onError: (e) => toast.error(e.message) })} title="Delete item">
+        {item.name}
+      </button>
+      <Button
+        variant="ghost"
+        size="icon"
+        disabled={remove.isPending}
+        onClick={async () => {
+          const ok = await confirmAction({ title: `Delete ${item.name}?`, message: 'Trip lists that already have it keep it.' })
+          if (ok) remove.mutate(item.id, { onError: (e) => toast.error(e.message) })
+        }}
+        title={`Delete ${item.name}`}
+      >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
     </li>
+  )
+}
+
+/** Add or edit an item. The category can be picked or typed; a typed one is created when the item is saved. */
+function ItemDialog({
+  item,
+  list,
+  items,
+  categories,
+  onClose,
+}: {
+  item: PackCatalogItem | null
+  list: ListKind
+  items: PackCatalogItem[]
+  categories: PackCategory[]
+  onClose: () => void
+}) {
+  const saveItem = useSaveCatalogItem()
+  const saveCategory = useSavePackCategory()
+  const [name, setName] = useState(item?.name ?? '')
+  const initial = categories.find((c) => c.id === item?.category_id)
+  const [category, setCategory] = useState<{ id: string | null; name: string }>({ id: initial?.id ?? null, name: initial?.name ?? '' })
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const saving = useRef(false)
+  const options: ComboOption[] = useMemo(() => categories.map((c) => ({ value: c.id, label: c.name })), [categories])
+  const newCategory = !category.id && category.name.trim() !== '' && !findByName(categories, category.name)
+
+  async function save() {
+    if (saving.current) return
+    const trimmed = name.trim()
+    if (!trimmed) return setError('Enter a name.')
+    const others = items.filter((i) => i.id !== item?.id)
+    if (findByName(others, trimmed)) return setError(`${trimmed} is already in ${LISTS[list].title.toLowerCase()}.`)
+    saving.current = true
+    setBusy(true)
+    setError(null)
+    try {
+      // Looked up rather than trusted, in case the category was deleted elsewhere meanwhile; it's then recreated by name.
+      const categoryId =
+        categories.find((c) => c.id === category.id)?.id ??
+        (category.name.trim()
+          ? (findByName(categories, category.name)?.id ??
+            (await saveCategory.mutateAsync({ name: category.name, sort_order: categories.length + 1 })).id)
+          : null)
+      await saveItem.mutateAsync({ id: item?.id, name: trimmed, category_id: categoryId, in_cabinet: list === 'cabinet' })
+      onClose()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      saving.current = false
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent title={item ? 'Edit item' : `Add to ${LISTS[list].title.toLowerCase()}`} className="max-w-md">
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void save()
+          }}
+          // cmdk swallows Enter in its input, so submit here unless its list is taking the key.
+          onKeyDown={(e) => {
+            const el = e.target as HTMLElement
+            if (e.key === 'Enter' && el.hasAttribute('cmdk-input') && el.dataset.open !== 'true') void save()
+          }}
+        >
+          <div>
+            <Label htmlFor="catalog-item-name">Item</Label>
+            <Input id="catalog-item-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Phone charger" />
+          </div>
+          <div>
+            <Label>Category</Label>
+            <Combobox
+              options={options}
+              value={category.id}
+              displayLabel={category.name}
+              onChange={(id, opt) => setCategory(id && opt ? { id, name: opt.label } : { id: null, name: '' })}
+              onCreate={(text) => setCategory({ id: null, name: text })}
+              placeholder="Pick or type a new one"
+              openOnFocus
+              preferCreate
+            />
+            {(newCategory || !category.name.trim()) && (
+              <p className="mt-1.5 text-xs text-slate-500">
+                {newCategory ? `${category.name.trim()} will be added as a new category.` : 'Leave blank to file it under Other.'}
+              </p>
+            )}
+          </div>
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-red-700">{error}</p>}
+          {/* Save comes first in tab order, so Enter after picking a category saves rather than cancels. */}
+          <div className="flex flex-row-reverse justify-start gap-2">
+            <Button type="submit" needsOnline disabled={busy}>
+              {item ? 'Save' : 'Add'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
