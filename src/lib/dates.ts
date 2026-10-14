@@ -55,6 +55,24 @@ export function formatTime(time: string | null, fmt: TimeFormat = '12h'): string
   return isValid(t) ? format(t, fmt === '24h' ? 'HH:mm' : 'h:mm a') : time
 }
 
+/**
+ * Reads a typed time into "HH:mm", or null when it isn't one. Accepts "14:30", "1430", "930", "9", "2:05 pm", "2p",
+ * "12am". Without am/pm the hour is read as 24-hour, so "2" is 02:00. With `fmt` '12h', an hour of 1-12 needs am/pm
+ * (so a forgotten "PM" is flagged rather than saved as the morning); 0 and 13-23 are unambiguous and still accepted.
+ */
+export function parseTimeInput(text: string, fmt: TimeFormat = '24h'): string | null {
+  const m = /^(\d{1,2})(?::?(\d{2}))?(?:\s*([ap])\.?m?\.?)?$/.exec(text.trim().toLowerCase())
+  if (!m) return null
+  let h = Number(m[1])
+  const min = m[2] ? Number(m[2]) : 0
+  if (min > 59) return null
+  if (m[3]) {
+    if (h < 1 || h > 12) return null
+    h = (h % 12) + (m[3] === 'p' ? 12 : 0)
+  } else if (h > 23 || (fmt === '12h' && h >= 1 && h <= 12)) return null
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+}
+
 /** Clock time from minutes since midnight: "9:30 AM" / "09:30". */
 export function formatClock(minutes: number, fmt: TimeFormat = '12h'): string {
   const h = Math.floor(minutes / 60) % 24

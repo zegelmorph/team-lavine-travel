@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatClock, formatHour, formatTime } from './dates'
+import { formatClock, formatHour, formatTime, parseTimeInput } from './dates'
 
 describe('time formats', () => {
   it('formats stored times in 12h by default', () => {
@@ -24,6 +24,32 @@ describe('time formats', () => {
     expect(formatClock(13 * 60 + 5)).toBe('1:05 PM')
     expect(formatClock(0, '24h')).toBe('00:00')
     expect(formatClock(13 * 60 + 5, '24h')).toBe('13:05')
+  })
+
+  it('reads typed times', () => {
+    expect(parseTimeInput('14:30')).toBe('14:30')
+    expect(parseTimeInput('1430')).toBe('14:30')
+    expect(parseTimeInput('930')).toBe('09:30')
+    expect(parseTimeInput('9')).toBe('09:00')
+    expect(parseTimeInput('2:05 pm')).toBe('14:05')
+    expect(parseTimeInput('2P')).toBe('14:00')
+    expect(parseTimeInput(' 10:45 AM ')).toBe('10:45')
+    expect(parseTimeInput('12am')).toBe('00:00')
+    expect(parseTimeInput('12:30 pm')).toBe('12:30')
+  })
+
+  it('rejects things that are not times', () => {
+    for (const bad of ['', 'abc', '25:00', '24', '9:60', '13pm', '0am', '12:3', '1:2:3', '9m', '2.', '2 m'])
+      expect(parseTimeInput(bad)).toBeNull()
+  })
+
+  it('needs am/pm for ambiguous hours in 12h mode', () => {
+    expect(parseTimeInput('7:30', '12h')).toBeNull()
+    expect(parseTimeInput('12', '12h')).toBeNull()
+    expect(parseTimeInput('7:30 pm', '12h')).toBe('19:30')
+    expect(parseTimeInput('13:30', '12h')).toBe('13:30')
+    expect(parseTimeInput('0030', '12h')).toBe('00:30')
+    expect(parseTimeInput('7:30', '24h')).toBe('07:30')
   })
 
   it('formats grid hours', () => {

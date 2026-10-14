@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Label, Select, field } from '@/components/ui/input'
 import { DateInput } from '@/components/ui/date-input'
+import { TimeInput } from '@/components/ui/time-input'
 import { confirmAction } from '@/components/ui/confirm'
 import { PlaceSearch } from '@/components/PlaceSearch'
 import { cn } from '@/lib/utils'
@@ -299,7 +300,7 @@ export function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg:
                 </div>
                 <div>
                   <Label htmlFor={`t-${end}-time`}>Time</Label>
-                  <Input id={`t-${end}-time`} type="time" value={draft[`${end}_time`]} onChange={(e) => setEnd(end, { time: e.target.value })} />
+                  <TimeInput id={`t-${end}-time`} value={draft[`${end}_time`]} onChange={(time) => setEnd(end, { time })} />
                 </div>
                 <div className="sm:col-span-2 md:col-span-1">
                   <Label htmlFor={`t-${end}-tz`}>Time zone</Label>

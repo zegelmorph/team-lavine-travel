@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Label, Select, Textarea, field } from '@/components/ui/input'
 import { DateInput } from '@/components/ui/date-input'
+import { TimeInput } from '@/components/ui/time-input'
 import { Switch } from '@/components/ui/switch'
 import { confirmAction } from '@/components/ui/confirm'
 import { PlaceSearch } from '@/components/PlaceSearch'
@@ -163,11 +164,11 @@ export function EventDialog({
                 <>
                   <div className="col-span-2 sm:col-span-1">
                     <Label htmlFor="ev-start">Starts</Label>
-                    <Input id="ev-start" type="time" required value={start} onChange={(e) => setStart(e.target.value)} />
+                    <TimeInput id="ev-start" required value={start} onChange={setStart} />
                   </div>
                   <div className="col-span-2 sm:col-span-1">
                     <Label htmlFor="ev-end">Ends</Label>
-                    <Input id="ev-end" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+                    <TimeInput id="ev-end" value={end} onChange={setEnd} />
                   </div>
                 </>
               )}

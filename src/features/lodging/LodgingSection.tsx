@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Label, Select, Textarea, field } from '@/components/ui/input'
 import { DateInput } from '@/components/ui/date-input'
+import { TimeInput } from '@/components/ui/time-input'
 import { confirmAction } from '@/components/ui/confirm'
 import { PlaceSearch } from '@/components/PlaceSearch'
 import { MapEmbed } from '@/components/MapEmbed'
@@ -314,7 +315,7 @@ export function LodgingDialog({ trip, stay, onClose }: { trip: TripBundle; stay:
               </div>
               <div>
                 <Label htmlFor="l-in-time">Time</Label>
-                <Input id="l-in-time" type="time" value={draft.check_in_time} onChange={(e) => set({ check_in_time: e.target.value })} />
+                <TimeInput id="l-in-time" value={draft.check_in_time} onChange={(check_in_time) => set({ check_in_time })} />
               </div>
               <div>
                 <Label htmlFor="l-out">Check out</Label>
@@ -322,7 +323,7 @@ export function LodgingDialog({ trip, stay, onClose }: { trip: TripBundle; stay:
               </div>
               <div>
                 <Label htmlFor="l-out-time">Time</Label>
-                <Input id="l-out-time" type="time" value={draft.check_out_time} onChange={(e) => set({ check_out_time: e.target.value })} />
+                <TimeInput id="l-out-time" value={draft.check_out_time} onChange={(check_out_time) => set({ check_out_time })} />
               </div>
             </div>
             {badRange && <p className="text-xs text-red-700">Check out is before check in.</p>}
