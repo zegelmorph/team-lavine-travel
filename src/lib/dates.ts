@@ -45,11 +45,31 @@ export function formatDay(day: string, pattern = 'EEE, MMM d'): string {
   return format(parseDay(day), pattern)
 }
 
-/** "9:30 AM" from "09:30" or "09:30:00". */
-export function formatTime(time: string | null): string {
+/** How times are shown: "9:30 AM" (12h) or "09:30" (24h). A personal setting; stored times are always 24-hour. */
+export type TimeFormat = '12h' | '24h'
+
+/** "9:30 AM" / "09:30" from "09:30" or "09:30:00". */
+export function formatTime(time: string | null, fmt: TimeFormat = '12h'): string {
   if (!time) return ''
   const t = parse(time.slice(0, 5), 'HH:mm', new Date())
-  return isValid(t) ? format(t, 'h:mm a') : time
+  return isValid(t) ? format(t, fmt === '24h' ? 'HH:mm' : 'h:mm a') : time
+}
+
+/** Clock time from minutes since midnight: "9:30 AM" / "09:30". */
+export function formatClock(minutes: number, fmt: TimeFormat = '12h'): string {
+  const h = Math.floor(minutes / 60) % 24
+  const m = minutes % 60
+  const mm = String(m).padStart(2, '0')
+  if (fmt === '24h') return `${String(h).padStart(2, '0')}:${mm}`
+  return `${h % 12 || 12}:${mm} ${h < 12 ? 'AM' : 'PM'}`
+}
+
+/** Hour label for a grid row: "9 AM", "Noon" / "09:00". */
+export function formatHour(h: number, fmt: TimeFormat = '12h'): string {
+  if (fmt === '24h') return `${String(h).padStart(2, '0')}:00`
+  if (h === 0) return '12 AM'
+  if (h === 12) return 'Noon'
+  return h < 12 ? `${h} AM` : `${h - 12} PM`
 }
 
 /** Minutes since midnight for "HH:mm[:ss]". */

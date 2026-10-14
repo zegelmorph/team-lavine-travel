@@ -2,7 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { ArrowRight, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDeleteTripRow, useSaveTripRow, type TripBundle } from '@/lib/queries'
-import { formatDay, formatTime, localTimeZone, shortZone } from '@/lib/dates'
+import { formatDay, localTimeZone, shortZone } from '@/lib/dates'
+import { useTimeFormatters } from '@/lib/userSettings'
 import { googleMapsUrl } from '@/lib/mapLinks'
 import { TRANSPORT_MODES, TRANSPORT_MODE_LABELS, type Transport, type TransportMode } from '@/lib/types'
 import { Card, CardHeader } from '@/components/ui/card'
@@ -62,6 +63,7 @@ function Endpoint({
   tz: string | null
   placeId: string | null
 }) {
+  const { formatTime } = useTimeFormatters()
   const maps = location ? googleMapsUrl({ name: location, place_id: placeId }) : null
   return (
     <div className="min-w-0">

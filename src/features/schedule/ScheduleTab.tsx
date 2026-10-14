@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useSaveTripRow, useWeather, type TripBundle } from '@/lib/queries'
 import { formatDay, todayISO } from '@/lib/dates'
 import { describeWeather, formatTemp, useTempUnit } from '@/lib/weather'
+import { useTimeFormatters } from '@/lib/userSettings'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { useOnline } from '@/lib/useOnline'
 import type { Destination, Lodging, Transport, TripEvent, WeatherDay } from '@/lib/types'
@@ -43,18 +44,6 @@ const KIND_STYLES: Record<ItemKind, string> = {
 
 function itemStyle(item: ScheduleItem) {
   return cn(KIND_STYLES[item.kind], item.tentative && 'border border-dashed border-brand-400 bg-brand-50/40 shadow-none ring-0')
-}
-
-function hourLabel(h: number) {
-  if (h === 0) return '12 AM'
-  if (h === 12) return 'Noon'
-  return h < 12 ? `${h} AM` : `${h - 12} PM`
-}
-
-function clockLabel(minutes: number) {
-  const h = Math.floor(minutes / 60) % 24
-  const m = minutes % 60
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
 }
 
 function durationLabel(minutes: number) {
@@ -234,6 +223,7 @@ function retarget(columns: Map<string, HTMLDivElement>, x: number, y: number, m:
 }
 
 function Grid({ days, weatherFor, onOpen, onAdd, onMove }: GridProps) {
+  const { formatClock: clockLabel, formatHour: hourLabel } = useTimeFormatters()
   const scroller = useRef<HTMLDivElement>(null)
   const header = useRef<HTMLDivElement>(null)
   const columnEls = useRef(new Map<string, HTMLDivElement>())
@@ -537,6 +527,7 @@ function Grid({ days, weatherFor, onOpen, onAdd, onMove }: GridProps) {
 }
 
 function Agenda({ days, weatherFor, onOpen, onAdd }: ViewProps) {
+  const { formatClock: clockLabel } = useTimeFormatters()
   const today = todayISO()
   return (
     <div className="space-y-3">

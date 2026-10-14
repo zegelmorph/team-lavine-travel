@@ -1,3 +1,5 @@
+import type { TimeFormat } from './dates'
+
 export interface Household {
   id: string
   name: string
@@ -15,6 +17,12 @@ export interface HouseholdMember {
   user_id: string
   email: string
   role: HouseholdRole
+}
+
+/** Row of `travel_user_settings`; absent until the user changes a setting. */
+export interface UserSettings {
+  user_id: string
+  time_format: TimeFormat
 }
 
 export type TripStatus = 'dreaming' | 'planning' | 'happening' | 'complete'

@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 import { keys, unwrap, useMembers } from '@/lib/queries'
 import { useTheme, type ThemePref } from '@/lib/theme'
 import { setTempUnit, useTempUnit, type TempUnit } from '@/lib/weather'
+import { useSetTimeFormat, useTimeFormat } from '@/lib/userSettings'
+import type { TimeFormat } from '@/lib/dates'
 import { useAuth } from './AuthProvider'
 import { useHousehold } from './HouseholdProvider'
 import { MIN_PASSWORD_LENGTH, PasswordInput, newPasswordProblem } from './PasswordInput'
@@ -81,6 +83,14 @@ function PersonalSettings() {
         <CardHeader title="Temperature" />
         <div className="p-5 max-md:p-4">
           <TempUnitPicker />
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Time format" />
+        <div className="space-y-2 p-5 max-md:p-4">
+          <TimeFormatPicker />
+          <p className="text-xs text-slate-400">Saved to your account, so it follows you to other devices.</p>
         </div>
       </Card>
 
@@ -445,6 +455,35 @@ function TempUnitPicker() {
           className={cn(
             'rounded-lg px-4 py-1.5 text-sm transition-colors max-md:px-5 max-md:py-2.5',
             unit === value ? 'bg-white font-medium text-brand-800 shadow-card' : 'text-slate-500 hover:text-slate-800',
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+const TIME_FORMAT_OPTIONS: { value: TimeFormat; label: string }[] = [
+  { value: '12h', label: '12-hour (3:30 PM)' },
+  { value: '24h', label: '24-hour (15:30)' },
+]
+
+function TimeFormatPicker() {
+  const current = useTimeFormat()
+  const set = useSetTimeFormat()
+  return (
+    <div role="radiogroup" aria-label="Time format" className="inline-flex gap-1 rounded-xl bg-slate-100 p-1">
+      {TIME_FORMAT_OPTIONS.map(({ value, label }) => (
+        <button
+          key={value}
+          type="button"
+          role="radio"
+          aria-checked={current === value}
+          onClick={() => set.mutate(value, { onError: (e) => toast.error(`Could not save time format: ${e.message}`) })}
+          className={cn(
+            'rounded-lg px-4 py-1.5 text-sm transition-colors max-md:px-3 max-md:py-2.5',
+            current === value ? 'bg-white font-medium text-brand-800 shadow-card' : 'text-slate-500 hover:text-slate-800',
           )}
         >
           {label}

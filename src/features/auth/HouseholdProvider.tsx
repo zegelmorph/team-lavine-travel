@@ -1,10 +1,11 @@
 import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, type Query } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { householdKeys, touchHousehold, useCreateHousehold, useMyHouseholds } from '@/lib/householdQueries'
 import type { MyHousehold } from '@/lib/types'
+import { USER_SETTINGS_KEY } from '@/lib/userSettings'
 import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
 import { AuthShell } from '@/components/AuthShell'
@@ -17,6 +18,9 @@ interface HouseholdState {
 }
 
 const HouseholdContext = createContext<HouseholdState | null>(null)
+
+/** Everything cached except what belongs to the user rather than a household: their household list and settings. */
+const isHouseholdData = (q: Query) => q.queryKey[0] !== householdKeys.mine[0] && q.queryKey[0] !== USER_SETTINGS_KEY
 
 /**
  * Resolves which household the app is working in. `my_households()` is ordered by last access, so the first
@@ -41,7 +45,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     if (selectedId !== household.id) {
       setSelectedId(household.id)
       if (selectedId) {
-        queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== householdKeys.mine[0] })
+        queryClient.removeQueries({ predicate: isHouseholdData })
         navigate('/', { replace: true })
       }
     }
@@ -54,7 +58,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   function select(id: string) {
     if (id === household?.id) return
     setSelectedId(id)
-    queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== householdKeys.mine[0] })
+    queryClient.removeQueries({ predicate: isHouseholdData })
     navigate('/', { replace: true })
   }
 

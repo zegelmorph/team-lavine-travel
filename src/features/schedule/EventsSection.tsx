@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Armchair, Hourglass, MapPin, Plus } from 'lucide-react'
 import type { TripBundle } from '@/lib/queries'
-import { formatDay, formatTime } from '@/lib/dates'
+import { formatDay } from '@/lib/dates'
+import { useTimeFormatters } from '@/lib/userSettings'
 import { EVENT_KIND_LABELS, type TripEvent } from '@/lib/types'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -70,6 +71,7 @@ export function EventsSection({ trip }: { trip: TripBundle }) {
 }
 
 function EventRow({ event: e, trip, onEdit }: { event: TripEvent; trip: TripBundle; onEdit: () => void }) {
+  const { formatTime } = useTimeFormatters()
   const Icon = EVENT_ICONS[e.kind]
   const map = eventMap(e, trip.destinations)
   const length = e.kind === 'show' ? runTime(e) : null

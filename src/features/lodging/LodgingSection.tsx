@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { BedDouble, ExternalLink, Globe, MapPin, Pencil, Phone, Plus, Star, Ticket, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDeleteTripRow, useSaveTripRow, type TripBundle } from '@/lib/queries'
-import { formatDateRange, formatTime, nights } from '@/lib/dates'
+import { formatDateRange, nights } from '@/lib/dates'
+import { useTimeFormatters } from '@/lib/userSettings'
 import { googleMapsEmbedUrl, googleMapsUrl } from '@/lib/mapLinks'
 import type { Lodging } from '@/lib/types'
 import { Card, CardHeader } from '@/components/ui/card'
@@ -57,6 +58,7 @@ export function LodgingSection({ trip }: { trip: TripBundle }) {
 }
 
 function LodgingRow({ stay: l, destination, onEdit, onDelete }: { stay: Lodging; destination?: string; onEdit: () => void; onDelete: () => void }) {
+  const { formatTime } = useTimeFormatters()
   const maps = googleMapsUrl(l)
   const embed = googleMapsEmbedUrl(l, destination)
   const n = nights(l.check_in, l.check_out)
