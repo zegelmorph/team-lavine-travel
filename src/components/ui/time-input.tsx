@@ -38,7 +38,7 @@ export function TimeInput({ value, onChange, onBlur, placeholder, className, ...
       autoCapitalize="off"
       spellCheck={false}
       inputMode={fmt === '24h' ? 'numeric' : 'text'}
-      placeholder={placeholder ?? (fmt === '24h' ? '14:30' : '2:30 PM')}
+      placeholder={placeholder}
       value={typed ?? formatTime(value, fmt)}
       aria-invalid={invalid || undefined}
       title={invalid ? hint : undefined}
