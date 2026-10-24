@@ -75,7 +75,7 @@ function TripHeader({ trip }: { trip: TripBundle }) {
   async function onDelete() {
     const ok = await confirmAction({
       title: `Delete ${trip.name}?`,
-      message: 'Destinations, travel, lodging, the schedule and the packing list all go with it.',
+      message: 'Destinations, travel, lodging, the schedule, the packing list and the to-dos all go with it.',
       confirmLabel: 'Delete trip',
     })
     if (!ok) return

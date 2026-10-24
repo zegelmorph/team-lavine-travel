@@ -13,6 +13,7 @@ import type {
   PackCategory,
   PackItem,
   Participant,
+  Todo,
   Transport,
   Trip,
   TripEvent,
@@ -62,6 +63,7 @@ export interface TripBundle extends Trip {
   lodging: Lodging[]
   events: TripEvent[]
   packItems: PackItem[]
+  todos: Todo[]
 }
 
 export function useTrip(tripId: string) {
@@ -78,7 +80,7 @@ function tripQuery(tripId: string) {
           .select(
             '*, destinations:travel_destinations(*), participants:travel_participants(*), ' +
               'transport:travel_transport(*), lodging:travel_lodging(*), events:travel_events(*), ' +
-              'packItems:travel_pack_items(*)',
+              'packItems:travel_pack_items(*), todos:travel_todos(*)',
           )
           .eq('id', tripId)
           .maybeSingle(),
@@ -97,6 +99,7 @@ function tripQuery(tripId: string) {
           a.title.localeCompare(b.title),
       )
       row.packItems.sort((a, b) => a.created_at.localeCompare(b.created_at))
+      row.todos.sort((a, b) => a.created_at.localeCompare(b.created_at))
       return row
     },
   })
@@ -158,6 +161,7 @@ const TRIP_TABLES = {
   travel_lodging: 'lodging',
   travel_events: 'events',
   travel_pack_items: 'packItems',
+  travel_todos: 'todos',
 } as const satisfies Record<string, keyof TripBundle>
 
 type TripTable = keyof typeof TRIP_TABLES

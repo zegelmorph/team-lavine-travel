@@ -10,6 +10,7 @@ import { TransportSection } from '@/features/transport/TransportSection'
 import { LodgingSection } from '@/features/lodging/LodgingSection'
 import { EventsSection } from '@/features/schedule/EventsSection'
 import { PackingSection } from '@/features/packing/PackingSection'
+import { TodosSection } from '@/features/todos/TodosSection'
 
 export function OverviewTab({ trip }: { trip: TripBundle }) {
   return (
@@ -26,6 +27,7 @@ export function OverviewTab({ trip }: { trip: TripBundle }) {
       <LodgingSection trip={trip} />
       <EventsSection trip={trip} />
       <PackingSection trip={trip} />
+      <TodosSection trip={trip} />
     </div>
   )
 }

@@ -237,6 +237,15 @@ export interface PackItem {
   created_at: string
 }
 
+export interface Todo {
+  id: string
+  trip_id: string
+  title: string
+  notes: string | null
+  done: boolean
+  created_at: string
+}
+
 /** Result of the travel-places edge function's details lookup. */
 export interface PlaceDetails {
   placeId: string

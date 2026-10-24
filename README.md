@@ -1,6 +1,6 @@
 # Team Lavine Travel
 
-Trip planning for the Lavine households: destinations with dates and automatic weather, participants, transport, lodging (with Google Places lookup and Maps links), a day-by-day schedule, and packing lists.
+Trip planning for the Lavine households: destinations with dates and automatic weather, participants, transport, lodging (with Google Places lookup and Maps links), a day-by-day schedule, packing lists, and a to-do checklist.
 
 Companion to [Team Lavine Finances](../personal-finance), sharing its stack, design system, Supabase project, and sign-in. Production: <https://travel.teamlavine.app>.
 
