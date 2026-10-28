@@ -7,10 +7,6 @@ import { Card, CardHeader, CardSubheader } from '@/components/ui/card'
 import { DestinationsPanel } from './DestinationsPanel'
 import { TravelersPanel } from './TravelersPanel'
 import { TransportSection } from '@/features/transport/TransportSection'
-import { LodgingSection } from '@/features/lodging/LodgingSection'
-import { EventsSection } from '@/features/schedule/EventsSection'
-import { PackingSection } from '@/features/packing/PackingSection'
-import { TodosSection } from '@/features/todos/TodosSection'
 
 export function OverviewTab({ trip }: { trip: TripBundle }) {
   return (
@@ -24,10 +20,6 @@ export function OverviewTab({ trip }: { trip: TripBundle }) {
         <NotesPanel key={trip.notes ?? ''} trip={trip} />
       </Card>
       <TransportSection trip={trip} />
-      <LodgingSection trip={trip} />
-      <EventsSection trip={trip} />
-      <PackingSection trip={trip} />
-      <TodosSection trip={trip} />
     </div>
   )
 }

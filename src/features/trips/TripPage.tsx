@@ -18,9 +18,17 @@ import { STATUS_STYLES } from './StatusBadge'
 import { tripRange } from './tripRange'
 import { OverviewTab } from './overview/OverviewTab'
 import { ScheduleTab } from '@/features/schedule/ScheduleTab'
+import { LodgingSection } from '@/features/lodging/LodgingSection'
+import { EventsSection } from '@/features/schedule/EventsSection'
+import { PackingSection } from '@/features/packing/PackingSection'
+import { TodosSection } from '@/features/todos/TodosSection'
 
 const TABS = [
   ['overview', 'Overview'],
+  ['lodging', 'Lodging'],
+  ['events', 'Events'],
+  ['packing', 'Packing'],
+  ['todos', 'To Do'],
   ['schedule', 'Schedule'],
 ] as const
 type TripTab = (typeof TABS)[number][0]
@@ -54,6 +62,10 @@ export function TripPage() {
         <PillTabs value={tab} options={TABS} onChange={setTab} />
       </div>
       {tab === 'overview' && <OverviewTab trip={trip} />}
+      {tab === 'lodging' && <LodgingSection trip={trip} />}
+      {tab === 'events' && <EventsSection trip={trip} />}
+      {tab === 'packing' && <PackingSection trip={trip} />}
+      {tab === 'todos' && <TodosSection trip={trip} />}
       {tab === 'schedule' && <ScheduleTab trip={trip} onShowOverview={() => setTab('overview')} />}
     </div>
   )

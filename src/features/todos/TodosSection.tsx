@@ -25,7 +25,7 @@ export function TodosSection({ trip }: { trip: TripBundle }) {
   return (
     <Card>
       <CardHeader
-        title="To-do"
+        title="To Do"
         actions={
           progress.total > 0 && (
             <span className="flex items-center gap-3">
