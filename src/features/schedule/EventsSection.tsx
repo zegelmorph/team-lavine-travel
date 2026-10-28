@@ -58,13 +58,7 @@ export function EventsSection({ trip }: { trip: TripBundle }) {
         </div>
       )}
       {editing && (
-        <EventDialog
-          tripId={trip.id}
-          destinations={trip.destinations}
-          event={editing.event}
-          initial={editing.initial}
-          onClose={() => setEditing(null)}
-        />
+        <EventDialog trip={trip} event={editing.event} initial={editing.initial} onClose={() => setEditing(null)} />
       )}
     </Card>
   )

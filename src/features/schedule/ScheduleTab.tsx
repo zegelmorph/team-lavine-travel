@@ -14,7 +14,7 @@ import { cn, plural } from '@/lib/utils'
 import { MODE_ICONS } from '@/features/transport/modes'
 import { TransportDialog } from '@/features/transport/TransportSection'
 import { LodgingDialog } from '@/features/lodging/LodgingSection'
-import { DestinationDialog } from '@/features/trips/overview/DestinationsPanel'
+import { DestinationDialog } from '@/features/trips/details/DestinationsPanel'
 import {
   buildSchedule,
   clockTime,
@@ -57,7 +57,7 @@ type Editing =
   | { kind: 'lodging'; stay: Lodging }
   | { kind: 'destination'; destination: Destination }
 
-export function ScheduleTab({ trip, onShowOverview }: { trip: TripBundle; onShowOverview: () => void }) {
+export function ScheduleTab({ trip, onShowDetails }: { trip: TripBundle; onShowDetails: () => void }) {
   const isMobile = useIsMobile()
   const days = useMemo(() => buildSchedule(trip), [trip])
   const { data: weather } = useWeather(
@@ -100,7 +100,7 @@ export function ScheduleTab({ trip, onShowOverview }: { trip: TripBundle; onShow
       <Card className="flex flex-col items-center gap-3 px-6 py-12 text-center text-slate-500">
         <CalendarPlus className="h-7 w-7 text-slate-300" />
         Add destination dates, travel or a stay and the schedule fills itself in.
-        <Button variant="outline" onClick={onShowOverview}>
+        <Button variant="outline" onClick={onShowDetails}>
           Add destinations
         </Button>
       </Card>
@@ -115,7 +115,7 @@ export function ScheduleTab({ trip, onShowOverview }: { trip: TripBundle; onShow
         <Grid days={days} weatherFor={weatherFor} onOpen={open} onAdd={online ? addEvent : undefined} onMove={online ? moveEvent : undefined} />
       )}
       {editing?.kind === 'event' && (
-        <EventDialog tripId={trip.id} destinations={trip.destinations} event={editing.event} initial={editing.initial} onClose={close} />
+        <EventDialog trip={trip} event={editing.event} initial={editing.initial} onClose={close} />
       )}
       {editing?.kind === 'transport' && <TransportDialog trip={trip} leg={editing.leg} onClose={close} />}
       {editing?.kind === 'lodging' && <LodgingDialog trip={trip} stay={editing.stay} onClose={close} />}

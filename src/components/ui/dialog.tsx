@@ -35,6 +35,22 @@ const PULSE: Keyframe[] = [
   { outline: '3px solid transparent' },
 ]
 
+const IGNORE_EDIT = () => {}
+
+/**
+ * For a part of a dialog that saves each change as it's made (so there's nothing unsaved in it), inside a dialog that
+ * guards other edits: changes in here no longer count as the dialog having been edited.
+ */
+export function EditedBoundary({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <EditedContext value={IGNORE_EDIT}>
+      <div className={className} onChange={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </EditedContext>
+  )
+}
+
 /**
  * Once anything inside has been edited, a click on the backdrop no longer closes the dialog (it shakes instead), so
  * a stray click can't throw the changes away. The close button, Cancel and Escape still close it. "Edited" means any

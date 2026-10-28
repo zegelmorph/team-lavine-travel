@@ -12,6 +12,7 @@ import type {
   PackCatalogItem,
   PackCategory,
   PackItem,
+  PackItemEvent,
   Participant,
   Todo,
   Transport,
@@ -63,6 +64,7 @@ export interface TripBundle extends Trip {
   lodging: Lodging[]
   events: TripEvent[]
   packItems: PackItem[]
+  packItemEvents: PackItemEvent[]
   todos: Todo[]
 }
 
@@ -80,7 +82,7 @@ function tripQuery(tripId: string) {
           .select(
             '*, destinations:travel_destinations(*), participants:travel_participants(*), ' +
               'transport:travel_transport(*), lodging:travel_lodging(*), events:travel_events(*), ' +
-              'packItems:travel_pack_items(*), todos:travel_todos(*)',
+              'packItems:travel_pack_items(*), packItemEvents:travel_pack_item_events(*), todos:travel_todos(*)',
           )
           .eq('id', tripId)
           .maybeSingle(),
@@ -161,6 +163,7 @@ const TRIP_TABLES = {
   travel_lodging: 'lodging',
   travel_events: 'events',
   travel_pack_items: 'packItems',
+  travel_pack_item_events: 'packItemEvents',
   travel_todos: 'todos',
 } as const satisfies Record<string, keyof TripBundle>
 
@@ -189,7 +192,12 @@ function useTripRowMutation<V, R>(
     onMutate: async (v: V) => {
       await qc.cancelQueries({ queryKey: keys.trip(tripId) })
       const previous = qc.getQueryData<TripBundle | null>(keys.trip(tripId))
-      if (previous) qc.setQueryData(keys.trip(tripId), { ...previous, [field]: patch(previous[field], v) })
+      if (!previous) return { previous }
+      const patched = patch(previous[field], v)
+      // Inserts have nothing to show yet and return the rows untouched. Nothing was changed, so a failure has nothing to
+      // restore, and restoring this snapshot would undo edits made while the insert was in flight.
+      if (patched === previous[field]) return { previous: undefined }
+      qc.setQueryData(keys.trip(tripId), { ...previous, [field]: patched })
       return { previous }
     },
     onError: (_e, _v, ctx) => {

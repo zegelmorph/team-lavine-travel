@@ -29,6 +29,13 @@ interface ComboboxProps {
    * For fields where new entries are common and a loose match (e.g. "Shirt" in "T-shirts") would be the wrong pick.
    */
   preferCreate?: boolean
+  /** Keep focus in the field after picking, for adding several things in a row, instead of moving on to the next field. */
+  stayOnPick?: boolean
+  /**
+   * Leaving the field (clicking elsewhere, Tab) accepts the highlighted match by default. Off, only Enter or a click on
+   * an entry commits, for fields where a commit saves something and a stray click away must not.
+   */
+  commitOnLeave?: boolean
   /** `inline` is the borderless style used inside register rows. */
   variant?: 'field' | 'inline'
 }
@@ -64,6 +71,8 @@ export function Combobox({
   autoFocus,
   openOnFocus,
   preferCreate,
+  stayOnPick = false,
+  commitOnLeave = true,
   variant = 'field',
 }: ComboboxProps) {
   const selected = options.find((o) => o.value === value)
@@ -134,7 +143,7 @@ export function Combobox({
   /** Picking from the list (Enter or click) accepts the value and moves on, like Tab. */
   function pick(itemValue: string) {
     commit(itemValue)
-    if (itemValue.startsWith('__extra__')) return
+    if (stayOnPick || itemValue.startsWith('__extra__')) return
     const input = inputRef.current
     if (input) setTimeout(() => focusNextField(input), 0)
   }
@@ -171,14 +180,16 @@ export function Combobox({
    * doesn't pick something); only Enter or a click runs an extra item.
    */
   const acceptable = engaged && (q || navigated) && active && !active.startsWith('__extra__') ? active : ''
+  /** What leaving the field commits. */
+  const acceptableOnLeave = commitOnLeave ? acceptable : ''
 
   /** Leaving the field clears the value if the text was emptied, or accepts the highlighted match. */
   function acceptOnLeave() {
     if (dirty && !text.trim()) {
       markEdited()
       onChange(null)
-    } else if (acceptable) {
-      commit(acceptable)
+    } else if (acceptableOnLeave) {
+      commit(acceptableOnLeave)
       return
     }
     setOpen(false)
@@ -231,14 +242,14 @@ export function Combobox({
                 setOpen(false)
                 return
               }
-              if (e.key === 'Tab' && !e.shiftKey && open && acceptable) {
+              if (e.key === 'Tab' && !e.shiftKey && open && acceptableOnLeave) {
                 // Accepting can re-render sibling cells (e.g. a memorized payee fills the category),
                 // so move focus explicitly once the update has landed instead of relying on native Tab.
                 e.preventDefault()
-                pick(acceptable)
+                pick(acceptableOnLeave)
                 return
               }
-              if (e.key === 'Tab' && open && acceptable) commit(acceptable)
+              if (e.key === 'Tab' && open && acceptableOnLeave) commit(acceptableOnLeave)
               if (e.key === 'Escape') {
                 setText(label)
                 setOpen(false)

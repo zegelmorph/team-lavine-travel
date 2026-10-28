@@ -16,15 +16,17 @@ import { cn } from '@/lib/utils'
 import { countdown } from './model'
 import { STATUS_STYLES } from './StatusBadge'
 import { tripRange } from './tripRange'
-import { OverviewTab } from './overview/OverviewTab'
+import { DetailsTab } from './details/DetailsTab'
 import { ScheduleTab } from '@/features/schedule/ScheduleTab'
+import { TransportSection } from '@/features/transport/TransportSection'
 import { LodgingSection } from '@/features/lodging/LodgingSection'
 import { EventsSection } from '@/features/schedule/EventsSection'
 import { PackingSection } from '@/features/packing/PackingSection'
 import { TodosSection } from '@/features/todos/TodosSection'
 
 const TABS = [
-  ['overview', 'Overview'],
+  ['details', 'Details'],
+  ['travel', 'Travel'],
   ['lodging', 'Lodging'],
   ['events', 'Events'],
   ['packing', 'Packing'],
@@ -37,8 +39,8 @@ export function TripPage() {
   const { tripId = '' } = useParams()
   const { data: trip, isPending, isPaused, error } = useTrip(tripId)
   const [params, setParams] = useSearchParams()
-  const tab = (TABS.find(([id]) => id === params.get('tab'))?.[0] ?? 'overview') as TripTab
-  const setTab = (id: TripTab) => setParams(id === 'overview' ? {} : { tab: id }, { replace: true })
+  const tab = (TABS.find(([id]) => id === params.get('tab'))?.[0] ?? 'details') as TripTab
+  const setTab = (id: TripTab) => setParams(id === 'details' ? {} : { tab: id }, { replace: true })
   useAutoRefreshWeather(tripId, Boolean(trip?.destinations.some((d) => d.lat != null && d.start_date)))
 
   if (isPending && isPaused) return <NotSavedOffline />
@@ -61,12 +63,13 @@ export function TripPage() {
       <div className="-mx-3 overflow-x-auto px-3 md:mx-0 md:px-0">
         <PillTabs value={tab} options={TABS} onChange={setTab} />
       </div>
-      {tab === 'overview' && <OverviewTab trip={trip} />}
+      {tab === 'details' && <DetailsTab trip={trip} />}
+      {tab === 'travel' && <TransportSection trip={trip} />}
       {tab === 'lodging' && <LodgingSection trip={trip} />}
       {tab === 'events' && <EventsSection trip={trip} />}
       {tab === 'packing' && <PackingSection trip={trip} />}
       {tab === 'todos' && <TodosSection trip={trip} />}
-      {tab === 'schedule' && <ScheduleTab trip={trip} onShowOverview={() => setTab('overview')} />}
+      {tab === 'schedule' && <ScheduleTab trip={trip} onShowDetails={() => setTab('details')} />}
     </div>
   )
 }

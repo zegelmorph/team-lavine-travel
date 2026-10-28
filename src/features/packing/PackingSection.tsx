@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { Archive, ChevronRight, Minus, Plus, Trash2 } from 'lucide-react'
+import { Archive, ChevronRight, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   useDeleteTripRow,
@@ -17,11 +17,23 @@ import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Combobox, type ComboOption } from '@/components/ui/combobox'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/input'
+import { Input, Label } from '@/components/ui/input'
 import { PillTabs } from '@/components/ui/pill-tabs'
+import { formatDay } from '@/lib/dates'
 import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
-import { availableCatalog, cabinetToReview, findByName, groupByCategory, packProgress, planPackAdd } from './model'
+import { usePackEventActions } from './eventLinks'
+import {
+  availableCatalog,
+  cabinetToReview,
+  findByName,
+  groupByCategory,
+  linkedEvents,
+  packProgress,
+  planEventLinks,
+  planPackAdd,
+  planPackRename,
+} from './model'
 
 export function PackingSection({ trip }: { trip: TripBundle }) {
   const { data: categories = [] } = usePackCategories()
@@ -130,7 +142,7 @@ export function PackingSection({ trip }: { trip: TripBundle }) {
                       {visible.map((item) => (
                         <PackRow
                           key={item.id}
-                          tripId={trip.id}
+                          trip={trip}
                           item={item}
                           fromCabinet={Boolean(item.catalog_item_id && cabinetIds.has(item.catalog_item_id))}
                         />
@@ -436,10 +448,12 @@ function CabinetChecklist({ trip, catalog, categories }: { trip: TripBundle; cat
   )
 }
 
-function PackRow({ tripId, item, fromCabinet }: { tripId: string; item: PackItem; fromCabinet: boolean }) {
-  const save = useSaveTripRow<PackItem>('travel_pack_items', tripId)
-  const remove = useDeleteTripRow('travel_pack_items', tripId)
+function PackRow({ trip, item, fromCabinet }: { trip: TripBundle; item: PackItem; fromCabinet: boolean }) {
+  const save = useSaveTripRow<PackItem>('travel_pack_items', trip.id)
+  const remove = useDeleteTripRow('travel_pack_items', trip.id)
   const online = useOnline()
+  const [renaming, setRenaming] = useState(false)
+  const events = linkedEvents(trip.events, trip.packItemEvents, item.id)
   const update = (patch: Partial<PackItem>) => save.mutate({ id: item.id, ...patch }, { onError: (e) => toast.error(e.message) })
 
   return (
@@ -452,7 +466,10 @@ function PackRow({ tripId, item, fromCabinet }: { tripId: string; item: PackItem
           disabled={!online}
           onChange={(e) => update({ packed: e.target.checked })}
         />
-        <span className={cn('min-w-0 flex-1 truncate', item.packed ? 'text-slate-400 line-through' : 'text-slate-800')}>{item.name}</span>
+        <span className="min-w-0 flex-1">
+          <span className={cn('block truncate', item.packed ? 'text-slate-400 line-through' : 'text-slate-800')}>{item.name}</span>
+          {events.length > 0 && <span className="block truncate text-xs text-slate-400">For {events.map((e) => e.title).join(', ')}</span>}
+        </span>
       </label>
       {fromCabinet && (
         <span role="img" aria-label="From the travel cabinet" title="From the travel cabinet. Put it back after the trip.">
@@ -480,15 +497,126 @@ function PackRow({ tripId, item, fromCabinet }: { tripId: string; item: PackItem
           <Plus className="h-3 w-3" />
         </button>
       </span>
+      <Button variant="ghost" size="icon" needsOnline onClick={() => setRenaming(true)} title="Rename" aria-label={`Rename ${item.name}`}>
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+      {/* On phones there's no room for a second icon; Remove is in the dialog the pencil opens. */}
       <Button
         variant="ghost"
         size="icon"
         needsOnline
+        className="max-md:hidden"
         onClick={() => remove.mutate(item.id, { onError: (e) => toast.error(e.message) })}
         title="Remove from list"
+        aria-label={`Remove ${item.name} from list`}
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
+      {renaming && <EditPackDialog trip={trip} item={item} onClose={() => setRenaming(false)} />}
     </li>
+  )
+}
+
+/**
+ * Renames the item on this trip's list only (the saved item in Settings keeps its name), chooses the events it's for,
+ * or removes it from the list. Nothing changes until Save.
+ */
+function EditPackDialog({ trip, item, onClose }: { trip: TripBundle; item: PackItem; onClose: () => void }) {
+  const save = useSaveTripRow<PackItem>('travel_pack_items', trip.id)
+  const remove = useDeleteTripRow('travel_pack_items', trip.id)
+  const { link, unlink } = usePackEventActions(trip.id)
+  const [name, setName] = useState(item.name)
+  const [wanted, setWanted] = useState<ReadonlySet<string>>(
+    () => new Set(linkedEvents(trip.events, trip.packItemEvents, item.id).map((e) => e.id)),
+  )
+  const [saving, setSaving] = useState(false)
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    const rename = planPackRename(trip.packItems, item.id, name)
+    if ('duplicate' in rename) return void toast.info(`${name.trim()} is already on the list`)
+    const links = planEventLinks(trip.packItemEvents, item.id, wanted)
+    const changes = [
+      ...('rename' in rename ? [save.mutateAsync({ id: item.id, name: rename.rename })] : []),
+      ...links.add.map((eventId) => link(item.id, eventId)),
+      ...links.remove.map((linkId) => unlink(linkId)),
+    ]
+    if (changes.length === 0) return onClose()
+    setSaving(true)
+    try {
+      await Promise.all(changes)
+      onClose()
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function toggleEvent(id: string, on: boolean) {
+    setWanted((s) => {
+      const next = new Set(s)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent title="Edit item" className="max-w-md">
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div>
+            <Label htmlFor="pack-rename">Name</Label>
+            <Input id="pack-rename" autoFocus required value={name} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.target.select()} />
+            {item.catalog_item_id && <p className="mt-1.5 text-xs text-slate-500">Only changes the name on this trip's list.</p>}
+          </div>
+          {trip.events.length > 0 && (
+            <fieldset>
+              <legend className="mb-1.5 text-xs font-medium text-slate-500">Taking it to</legend>
+              <ul className="max-h-48 overflow-auto rounded-lg border border-slate-200 px-3 py-1 max-md:max-h-56">
+                {trip.events.map((ev) => (
+                  <li key={ev.id}>
+                    <label className="flex items-center gap-3 py-1.5 max-md:py-2.5">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 shrink-0 max-md:h-5 max-md:w-5"
+                        checked={wanted.has(ev.id)}
+                        onChange={(e) => toggleEvent(ev.id, e.target.checked)}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-slate-800">{ev.title}</span>
+                      <span className="shrink-0 text-xs text-slate-400">{ev.date ? formatDay(ev.date, 'MMM d') : 'No date'}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              needsOnline
+              className="text-red-700 md:hidden"
+              onClick={() => {
+                // Closed first: the optimistic delete unmounts the row (and this dialog), and a rollback must not reopen it.
+                onClose()
+                remove.mutateAsync(item.id).catch((err: Error) => toast.error(err.message))
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Remove
+            </Button>
+            <span className="ml-auto flex gap-2">
+              <Button type="button" variant="ghost" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" needsOnline disabled={!name.trim() || saving}>
+                Save
+              </Button>
+            </span>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

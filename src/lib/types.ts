@@ -237,6 +237,15 @@ export interface PackItem {
   created_at: string
 }
 
+/** A packing item taken to an event. An item can be linked to several events, and an event can have several items. */
+export interface PackItemEvent {
+  id: string
+  trip_id: string
+  item_id: string
+  event_id: string
+  created_at: string
+}
+
 export interface Todo {
   id: string
   trip_id: string

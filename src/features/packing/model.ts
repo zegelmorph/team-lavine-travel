@@ -1,4 +1,4 @@
-import type { PackCatalogItem, PackCategory, PackItem } from '@/lib/types'
+import type { PackCatalogItem, PackCategory, PackItem, PackItemEvent } from '@/lib/types'
 
 export interface PackGroup<T> {
   category: PackCategory | null
@@ -46,14 +46,34 @@ export interface CatalogSave {
  */
 export function planPackAdd(
   catalog: PackCatalogItem[],
-  onList: Pick<PackItem, 'name'>[],
+  onList: (Pick<PackItem, 'name'> & Partial<Pick<PackItem, 'catalog_item_id'>>)[],
   draft: { name: string; catalogId: string | null },
   categoryId: string,
 ): { duplicate: true } | { reuse: PackCatalogItem } | { save: CatalogSave } {
   if (findByName(onList, draft.name)) return { duplicate: true }
   const saved = (draft.catalogId && catalog.find((c) => c.id === draft.catalogId)) || findByName(catalog, draft.name)
+  // A list item renamed since it was added no longer matches its saved item by name, but it is still that item.
+  if (saved && onList.some((i) => i.catalog_item_id === saved.id)) return { duplicate: true }
   if (saved && saved.category_id === categoryId) return { reuse: saved }
   return { save: { id: saved?.id, name: saved?.name ?? draft.name.trim(), category_id: categoryId } }
+}
+
+/**
+ * Renaming an item on the trip's list. Only this list entry changes (the household's saved item keeps its name), and a
+ * name already on the list is refused, as it is when adding.
+ */
+export function planPackRename(
+  onList: Pick<PackItem, 'id' | 'name'>[],
+  id: string,
+  newName: string,
+): { unchanged: true } | { duplicate: true } | { rename: string } {
+  const name = newName.trim()
+  if (!name) return { unchanged: true }
+  const current = onList.find((i) => i.id === id)
+  if (current && current.name === name) return { unchanged: true }
+  const key = name.toLowerCase()
+  if (onList.some((i) => i.id !== id && i.name.trim().toLowerCase() === key)) return { duplicate: true }
+  return { rename: name }
 }
 
 /** Travel cabinet items still to consider for this trip: in the cabinet and not on the list yet. */
@@ -69,4 +89,32 @@ export function availableCatalog(catalog: PackCatalogItem[], items: Pick<PackIte
   const usedIds = new Set(items.map((i) => i.catalog_item_id).filter(Boolean))
   const usedNames = new Set(items.map((i) => i.name.trim().toLowerCase()))
   return catalog.filter((c) => !usedIds.has(c.id) && !usedNames.has(c.name.trim().toLowerCase()))
+}
+
+type Link = Pick<PackItemEvent, 'item_id' | 'event_id'>
+
+/** The events an item is taken to, in the order given (the trip's events are already in date order). */
+export function linkedEvents<E extends { id: string }>(events: E[], links: Link[], itemId: string): E[] {
+  const ids = new Set(links.filter((l) => l.item_id === itemId).map((l) => l.event_id))
+  return events.filter((e) => ids.has(e.id))
+}
+
+/** The items taken to an event. Links to items that are gone (removed moments ago, before the cache catches up) are ignored. */
+export function itemsForEvent<I extends { id: string }>(items: I[], links: Link[], eventId: string): I[] {
+  const ids = new Set(links.filter((l) => l.event_id === eventId).map((l) => l.item_id))
+  return items.filter((i) => ids.has(i.id))
+}
+
+/** What to change so an item is taken to exactly the `wanted` events: events to link, and existing links to delete. */
+export function planEventLinks(
+  links: Pick<PackItemEvent, 'id' | 'item_id' | 'event_id'>[],
+  itemId: string,
+  wanted: ReadonlySet<string>,
+): { add: string[]; remove: string[] } {
+  const mine = links.filter((l) => l.item_id === itemId)
+  const have = new Set(mine.map((l) => l.event_id))
+  return {
+    add: [...wanted].filter((id) => !have.has(id)),
+    remove: mine.filter((l) => !wanted.has(l.event_id)).map((l) => l.id),
+  }
 }

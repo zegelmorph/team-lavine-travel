@@ -6,21 +6,18 @@ import { useOnline } from '@/lib/useOnline'
 import { Card, CardHeader, CardSubheader } from '@/components/ui/card'
 import { DestinationsPanel } from './DestinationsPanel'
 import { TravelersPanel } from './TravelersPanel'
-import { TransportSection } from '@/features/transport/TransportSection'
 
-export function OverviewTab({ trip }: { trip: TripBundle }) {
+/** The Details tab: destinations, travelers and notes. */
+export function DetailsTab({ trip }: { trip: TripBundle }) {
   return (
-    <div className="space-y-4 md:space-y-6">
-      <Card>
-        <CardHeader title="Trip" />
-        <div className="grid grid-cols-[minmax(0,1fr)] divide-y divide-slate-100 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:divide-x lg:divide-y-0">
-          <DestinationsPanel trip={trip} />
-          <TravelersPanel trip={trip} />
-        </div>
-        <NotesPanel key={trip.notes ?? ''} trip={trip} />
-      </Card>
-      <TransportSection trip={trip} />
-    </div>
+    <Card>
+      <CardHeader title="Trip" />
+      <div className="grid grid-cols-[minmax(0,1fr)] divide-y divide-slate-100 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:divide-x lg:divide-y-0">
+        <DestinationsPanel trip={trip} />
+        <TravelersPanel trip={trip} />
+      </div>
+      <NotesPanel key={trip.notes ?? ''} trip={trip} />
+    </Card>
   )
 }
 

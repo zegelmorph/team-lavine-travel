@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { availableCatalog, cabinetToReview, findByName, groupByCategory, packProgress, planPackAdd } from './model'
+import {
+  availableCatalog,
+  cabinetToReview,
+  findByName,
+  groupByCategory,
+  itemsForEvent,
+  linkedEvents,
+  packProgress,
+  planEventLinks,
+  planPackAdd,
+  planPackRename,
+} from './model'
 import type { PackCatalogItem, PackCategory } from '@/lib/types'
 
 const cat = (id: string, name: string, sort_order: number): PackCategory => ({ id, household_id: 'h', name, sort_order })
@@ -83,6 +94,60 @@ describe('findByName', () => {
   })
 })
 
+describe('event links', () => {
+  const links = [
+    { id: 'l1', item_id: 'shoes', event_id: 'show' },
+    { id: 'l2', item_id: 'shoes', event_id: 'dinner' },
+    { id: 'l3', item_id: 'hat', event_id: 'show' },
+  ]
+
+  it('finds the events an item is for, in the order of the events given', () => {
+    expect(linkedEvents([{ id: 'dinner' }, { id: 'hike' }, { id: 'show' }], links, 'shoes').map((e) => e.id)).toEqual(['dinner', 'show'])
+    expect(linkedEvents([{ id: 'show' }], links, 'socks')).toEqual([])
+  })
+
+  it('finds the items for an event, ignoring links to items that no longer exist', () => {
+    expect(itemsForEvent([{ id: 'hat' }, { id: 'shoes' }], links, 'show').map((i) => i.id)).toEqual(['hat', 'shoes'])
+    expect(itemsForEvent([{ id: 'shoes' }], links, 'show').map((i) => i.id)).toEqual(['shoes'])
+  })
+
+  it('plans only the difference between the current links and the wanted events', () => {
+    expect(planEventLinks(links, 'shoes', new Set(['show', 'hike']))).toEqual({ add: ['hike'], remove: ['l2'] })
+    expect(planEventLinks(links, 'shoes', new Set(['show', 'dinner']))).toEqual({ add: [], remove: [] })
+    expect(planEventLinks(links, 'socks', new Set(['show']))).toEqual({ add: ['show'], remove: [] })
+    expect(planEventLinks(links, 'hat', new Set())).toEqual({ add: [], remove: ['l3'] })
+  })
+})
+
+describe('planPackRename', () => {
+  const list = [
+    { id: '1', name: 'Hat' },
+    { id: '2', name: 'Socks' },
+  ]
+
+  it('renames to the trimmed name', () => {
+    expect(planPackRename(list, '1', '  Sun hat ')).toEqual({ rename: 'Sun hat' })
+  })
+
+  it('allows changing only the case of its own name', () => {
+    expect(planPackRename(list, '1', 'HAT')).toEqual({ rename: 'HAT' })
+  })
+
+  it('does nothing for a blank or identical name', () => {
+    expect(planPackRename(list, '1', '   ')).toEqual({ unchanged: true })
+    expect(planPackRename(list, '1', ' Hat ')).toEqual({ unchanged: true })
+  })
+
+  it('refuses a name another item on the list already has', () => {
+    expect(planPackRename(list, '1', ' socks ')).toEqual({ duplicate: true })
+  })
+
+  it('still refuses a clash when the item itself has the same name as an older duplicate', () => {
+    const legacy = [...list, { id: '3', name: 'hat' }]
+    expect(planPackRename(legacy, '1', 'HAT')).toEqual({ duplicate: true })
+  })
+})
+
 describe('planPackAdd', () => {
   const hat = { ...catalogItem('hat', 'Hat'), category_id: 'clothes' }
   const catalog = [hat]
@@ -109,5 +174,11 @@ describe('planPackAdd', () => {
 
   it('refuses an item already on the list', () => {
     expect(planPackAdd(catalog, [{ name: 'HAT' }], { name: 'Hat', catalogId: 'hat' }, 'clothes')).toEqual({ duplicate: true })
+  })
+
+  it('refuses a saved item that is on the list under a new name', () => {
+    expect(planPackAdd(catalog, [{ name: 'Sun hat', catalog_item_id: 'hat' }], { name: 'Hat', catalogId: null }, 'clothes')).toEqual({
+      duplicate: true,
+    })
   })
 })

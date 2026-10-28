@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ExternalLink, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useDeleteTripRow, useSaveTripRow } from '@/lib/queries'
-import { EVENT_KINDS, EVENT_KIND_LABELS, type Destination, type EventKind, type TripEvent } from '@/lib/types'
+import { useDeleteTripRow, useSaveTripRow, type TripBundle } from '@/lib/queries'
+import { EVENT_KINDS, EVENT_KIND_LABELS, type EventKind, type TripEvent } from '@/lib/types'
+import { PillTabs } from '@/components/ui/pill-tabs'
+import { EventPacking } from '@/features/packing/EventPacking'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, EditedBoundary } from '@/components/ui/dialog'
 import { Input, Label, Select, Textarea, field } from '@/components/ui/input'
 import { DateInput } from '@/components/ui/date-input'
 import { TimeInput } from '@/components/ui/time-input'
@@ -40,23 +42,28 @@ export interface EventDraft {
   end_time: string
 }
 
+const TABS = [
+  ['details', 'Details'],
+  ['packing', 'Packing'],
+] as const
+
 export function EventDialog({
-  tripId,
-  destinations,
+  trip,
   event,
   initial,
   onClose,
 }: {
-  tripId: string
-  /** Anchors a typed location to the right town for the map. */
-  destinations: Destination[]
+  /** Its destinations anchor a typed location to the right town for the map; its packing list feeds the Packing tab. */
+  trip: TripBundle
   event: TripEvent | null
   initial?: EventDraft
   onClose: () => void
 }) {
+  const { id: tripId, destinations } = trip
   const save = useSaveTripRow<TripEvent>('travel_events', tripId)
   const remove = useDeleteTripRow('travel_events', tripId)
   const online = useOnline()
+  const [tab, setTab] = useState<(typeof TABS)[number][0]>('details')
   const [title, setTitle] = useState(event?.title ?? '')
   const [date, setDate] = useState(event?.date ?? initial?.date ?? '')
   const [allDay, setAllDay] = useState(event ? !event.start_time : !initial?.start_time)
@@ -121,7 +128,10 @@ export function EventDialog({
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent title={event ? (online ? 'Edit event' : 'Event') : 'Add event'} className="max-w-md md:max-w-3xl" fullScreenOnMobile>
-        <form onSubmit={onSubmit} className="grid gap-x-6 gap-y-4 md:grid-cols-2">
+        {/* A new event has nothing to pack for until it's saved. */}
+        {event && <PillTabs value={tab} options={TABS} onChange={setTab} className="mb-4" />}
+        {/* Hidden rather than unmounted, so edits to the details survive a look at the packing tab. */}
+        <form onSubmit={onSubmit} className={cn('grid gap-x-6 gap-y-4 md:grid-cols-2', tab !== 'details' && 'hidden')}>
           <div className="space-y-4">
             <div>
               <Label htmlFor="ev-kind">Type</Label>
@@ -272,6 +282,17 @@ export function EventDialog({
             </span>
           </div>
         </form>
+        {event && tab === 'packing' && (
+          // Packing saves as it goes, so it doesn't count toward the unsaved-edits guard on the details.
+          <EditedBoundary>
+            <EventPacking trip={trip} event={event} />
+            <div className="mt-5 flex justify-end max-md:pb-4">
+              <Button type="button" variant="ghost" onClick={() => setTab('details')}>
+                Back to details
+              </Button>
+            </div>
+          </EditedBoundary>
+        )}
       </DialogContent>
     </Dialog>
   )
