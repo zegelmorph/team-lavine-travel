@@ -15,6 +15,7 @@ import { MODE_ICONS } from '@/features/transport/modes'
 import { TransportDialog } from '@/features/transport/TransportSection'
 import { LodgingDialog } from '@/features/lodging/LodgingSection'
 import { DestinationDialog } from '@/features/trips/details/DestinationsPanel'
+import { useCanEdit } from '@/features/trips/access'
 import {
   buildSchedule,
   clockTime,
@@ -66,6 +67,8 @@ export function ScheduleTab({ trip, onShowDetails }: { trip: TripBundle; onShowD
   )
   const [editing, setEditing] = useState<Editing | null>(null)
   const online = useOnline()
+  const canEdit = useCanEdit()
+  const canChange = online && canEdit
 
   function open(item: ScheduleItem) {
     const id = item.sourceId
@@ -99,10 +102,12 @@ export function ScheduleTab({ trip, onShowDetails }: { trip: TripBundle; onShowD
     return (
       <Card className="flex flex-col items-center gap-3 px-6 py-12 text-center text-slate-500">
         <CalendarPlus className="h-7 w-7 text-slate-300" />
-        Add destination dates, travel or a stay and the schedule fills itself in.
-        <Button variant="outline" onClick={onShowDetails}>
-          Add destinations
-        </Button>
+        {canEdit ? 'Add destination dates, travel or a stay and the schedule fills itself in.' : 'Nothing on the schedule yet.'}
+        {canEdit && (
+          <Button variant="outline" onClick={onShowDetails}>
+            Add destinations
+          </Button>
+        )}
       </Card>
     )
   }
@@ -110,9 +115,9 @@ export function ScheduleTab({ trip, onShowDetails }: { trip: TripBundle; onShowD
   return (
     <>
       {isMobile ? (
-        <Agenda days={days} weatherFor={weatherFor} onOpen={open} onAdd={online ? addEvent : undefined} />
+        <Agenda days={days} weatherFor={weatherFor} onOpen={open} onAdd={canChange ? addEvent : undefined} />
       ) : (
-        <Grid days={days} weatherFor={weatherFor} onOpen={open} onAdd={online ? addEvent : undefined} onMove={online ? moveEvent : undefined} />
+        <Grid days={days} weatherFor={weatherFor} onOpen={open} onAdd={canChange ? addEvent : undefined} onMove={canChange ? moveEvent : undefined} />
       )}
       {editing?.kind === 'event' && (
         <EventDialog trip={trip} event={editing.event} initial={editing.initial} onClose={close} />
@@ -128,12 +133,12 @@ interface ViewProps {
   days: ScheduleDay[]
   weatherFor: (date: string) => WeatherDay | undefined
   onOpen: (item: ScheduleItem) => void
-  /** Unset while offline, which hides every way to add an event. */
+  /** Unset while offline or on a view-only trip, which hides every way to add an event. */
   onAdd?: (draft: EventDraft) => void
 }
 
 interface GridProps extends ViewProps {
-  /** Moves an event to a new day and start time; unset while offline. */
+  /** Moves an event to a new day and start time; unset while offline or on a view-only trip. */
   onMove?: (item: ScheduleItem, date: string, start: number) => void
 }
 

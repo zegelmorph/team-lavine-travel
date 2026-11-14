@@ -391,6 +391,9 @@ verify_jwt = false
 [functions.travel-places]
 verify_jwt = true
 
+[functions.travel-invite-user]
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

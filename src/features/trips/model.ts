@@ -1,6 +1,17 @@
 import { differenceInCalendarDays } from 'date-fns'
 import { parseDay } from '@/lib/dates'
-import type { TripStatus, TripSummary } from '@/lib/types'
+import type { HouseholdRole, TripStatus, TripSummary } from '@/lib/types'
+
+/** `view` is a traveller on someone else's trip: they see all of it and can only tick packing items and to-dos. */
+export type TripAccess = 'manage' | 'view'
+
+/**
+ * What the signed-in user can do with a trip they can see. Mirrors `travel_can_edit` in the database, which is what
+ * actually enforces it; this only decides which controls to show.
+ */
+export function tripAccess(trip: { owner_id: string | null }, role: HouseholdRole, userId: string | undefined): TripAccess {
+  return role === 'admin' || (userId !== undefined && trip.owner_id === userId) ? 'manage' : 'view'
+}
 
 /** Order of the sections on the trips page: what's on now, then what's next, then ideas, then memories. */
 export const STATUS_SECTIONS: TripStatus[] = ['happening', 'planning', 'dreaming', 'complete']

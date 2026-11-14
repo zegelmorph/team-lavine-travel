@@ -23,7 +23,7 @@ const HouseholdContext = createContext<HouseholdState | null>(null)
 const isHouseholdData = (q: Query) => q.queryKey[0] !== householdKeys.mine[0] && q.queryKey[0] !== USER_SETTINGS_KEY
 
 /**
- * Resolves which household the app is working in. `my_households()` is ordered by last access, so the first
+ * Resolves which household the app is working in. `travel_my_households()` is ordered by last access, so the first
  * row is where the user left off. With several households and none accessed yet, the user picks one.
  */
 export function HouseholdProvider({ children }: { children: ReactNode }) {
@@ -120,9 +120,9 @@ function NoHousehold({
       <div className="rounded-xl bg-slate-50 p-4">
         <p className="font-medium text-slate-800">Joining someone else's household?</p>
         <p className="mt-1 text-slate-500">
-          Ask the household owner to invite{' '}
-          <span className="font-medium text-slate-700">{session?.user.email ?? 'your email'}</span> from their
-          settings, then check again.
+          Ask one of its admins to add{' '}
+          <span className="font-medium text-slate-700">{session?.user.email ?? 'your email'}</span> under People in
+          their settings and send the invite, then check again.
         </p>
         <Button
           variant="outline"

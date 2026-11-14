@@ -22,6 +22,7 @@ import { PillTabs } from '@/components/ui/pill-tabs'
 import { formatDay } from '@/lib/dates'
 import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
+import { useCanEdit } from '@/features/trips/access'
 import { usePackEventActions } from './eventLinks'
 import {
   availableCatalog,
@@ -41,6 +42,7 @@ export function PackingSection({ trip }: { trip: TripBundle }) {
   const setPacked = useSetPacked(trip.id)
   const [hidePacked, setHidePacked] = useState(false)
   const online = useOnline()
+  const canEdit = useCanEdit()
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const toggle = (key: string) =>
     setCollapsed((s) => {
@@ -70,9 +72,11 @@ export function PackingSection({ trip }: { trip: TripBundle }) {
                 </label>
               </>
             )}
-            <Button size="sm" needsOnline disabled={!catalogLoaded} onClick={() => setAdding(true)}>
-              <Plus className="h-4 w-4" /> Add
-            </Button>
+            {canEdit && (
+              <Button size="sm" needsOnline disabled={!catalogLoaded} onClick={() => setAdding(true)}>
+                <Plus className="h-4 w-4" /> Add
+              </Button>
+            )}
           </span>
         }
       />
@@ -90,7 +94,7 @@ export function PackingSection({ trip }: { trip: TripBundle }) {
 
       {groups.length === 0 ? (
         <p className="px-5 py-8 text-center text-slate-500">
-          {online ? 'Nothing on the list yet. Tap Add to start packing.' : 'Nothing on the list yet.'}
+          {online && canEdit ? 'Nothing on the list yet. Tap Add to start packing.' : 'Nothing on the list yet.'}
         </p>
       ) : (
         <div className="divide-y divide-slate-100">
@@ -452,6 +456,7 @@ function PackRow({ trip, item, fromCabinet }: { trip: TripBundle; item: PackItem
   const save = useSaveTripRow<PackItem>('travel_pack_items', trip.id)
   const remove = useDeleteTripRow('travel_pack_items', trip.id)
   const online = useOnline()
+  const canEdit = useCanEdit()
   const [renaming, setRenaming] = useState(false)
   const events = linkedEvents(trip.events, trip.packItemEvents, item.id)
   const update = (patch: Partial<PackItem>) => save.mutate({ id: item.id, ...patch }, { onError: (e) => toast.error(e.message) })
@@ -476,42 +481,53 @@ function PackRow({ trip, item, fromCabinet }: { trip: TripBundle; item: PackItem
           <Archive className="h-3.5 w-3.5 text-slate-400" />
         </span>
       )}
-      <span className="flex items-center rounded-full bg-slate-100">
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 disabled:opacity-40 max-md:h-10 max-md:w-10"
-          disabled={!online || item.quantity <= 1}
-          onClick={() => update({ quantity: item.quantity - 1 })}
-          aria-label="Fewer"
-        >
-          <Minus className="h-3 w-3" />
-        </button>
-        <span className="num w-6 text-center text-sm font-medium text-slate-700">{item.quantity}</span>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 disabled:opacity-40 max-md:h-10 max-md:w-10"
-          disabled={!online}
-          onClick={() => update({ quantity: item.quantity + 1 })}
-          aria-label="More"
-        >
-          <Plus className="h-3 w-3" />
-        </button>
-      </span>
-      <Button variant="ghost" size="icon" needsOnline onClick={() => setRenaming(true)} title="Rename" aria-label={`Rename ${item.name}`}>
-        <Pencil className="h-3.5 w-3.5" />
-      </Button>
-      {/* On phones there's no room for a second icon; Remove is in the dialog the pencil opens. */}
-      <Button
-        variant="ghost"
-        size="icon"
-        needsOnline
-        className="max-md:hidden"
-        onClick={() => remove.mutate(item.id, { onError: (e) => toast.error(e.message) })}
-        title="Remove from list"
-        aria-label={`Remove ${item.name} from list`}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      {!canEdit ? (
+        // Someone else's trip: the list can be checked off but not changed.
+        item.quantity > 1 && (
+          <span className="num text-sm font-medium text-slate-500" aria-label={`Quantity ${item.quantity}`}>
+            × {item.quantity}
+          </span>
+        )
+      ) : (
+        <>
+          <span className="flex items-center rounded-full bg-slate-100">
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 disabled:opacity-40 max-md:h-10 max-md:w-10"
+              disabled={!online || item.quantity <= 1}
+              onClick={() => update({ quantity: item.quantity - 1 })}
+              aria-label="Fewer"
+            >
+              <Minus className="h-3 w-3" />
+            </button>
+            <span className="num w-6 text-center text-sm font-medium text-slate-700">{item.quantity}</span>
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 disabled:opacity-40 max-md:h-10 max-md:w-10"
+              disabled={!online}
+              onClick={() => update({ quantity: item.quantity + 1 })}
+              aria-label="More"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </span>
+          <Button variant="ghost" size="icon" needsOnline onClick={() => setRenaming(true)} title="Rename" aria-label={`Rename ${item.name}`}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          {/* On phones there's no room for a second icon; Remove is in the dialog the pencil opens. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            needsOnline
+            className="max-md:hidden"
+            onClick={() => remove.mutate(item.id, { onError: (e) => toast.error(e.message) })}
+            title="Remove from list"
+            aria-label={`Remove ${item.name} from list`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      )}
       {renaming && <EditPackDialog trip={trip} item={item} onClose={() => setRenaming(false)} />}
     </li>
   )

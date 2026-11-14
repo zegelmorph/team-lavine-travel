@@ -1,10 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, LogOut, Monitor, Moon, Send, Sun, Trash2, UserPlus, type LucideIcon } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { KeyRound, LogOut, Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { keys, unwrap, useMembers } from '@/lib/queries'
+import { unwrap, usePeople, useUpdatePerson } from '@/lib/queries'
 import { useTheme, type ThemePref } from '@/lib/theme'
 import { setTempUnit, useTempUnit, type TempUnit } from '@/lib/weather'
 import { useSetTimeFormat, useTimeFormat } from '@/lib/userSettings'
@@ -12,8 +12,9 @@ import type { TimeFormat } from '@/lib/dates'
 import { useAuth } from './AuthProvider'
 import { useHousehold } from './HouseholdProvider'
 import { MIN_PASSWORD_LENGTH, PasswordInput, newPasswordProblem } from './PasswordInput'
-import { useInviteUser } from '@/lib/householdQueries'
+import { householdKeys } from '@/lib/householdQueries'
 import { CatalogSettings } from '@/features/packing/CatalogSettings'
+import { Avatar, PeopleSettings } from '@/features/people/PeopleSettings'
 import { PillTabs } from '@/components/ui/pill-tabs'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
@@ -21,13 +22,6 @@ import { Input, Label } from '@/components/ui/input'
 import { Card, CardHeader, PageHeader } from '@/components/ui/card'
 import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
-
-interface Invite {
-  id: string
-  email: string
-  created_at: string
-  accepted_at: string | null
-}
 
 const SETTINGS_TABS = [
   ['personal', 'Personal'],
@@ -39,7 +33,7 @@ type Tab = (typeof SETTINGS_TABS)[number][0]
 
 const TAB_HINTS: Record<Tab, (household: string) => string> = {
   personal: () => "Just for you; other household members aren't affected.",
-  household: (name) => `Everyone in ${name} shares its trips. Members also share the Team Lavine finance app.`,
+  household: (name) => `Who can use ${name}'s trips. Admins manage every trip; everyone else manages their own and sees the ones they're travelling on.`,
   packing: (name) => `Items ${name} picks from when building a trip's packing list. Set how many to bring on each trip.`,
   cabinet: (name) => `What ${name} keeps in the travel cabinet. When packing for a trip, check off what you're taking and it moves to the list.`,
 }
@@ -71,6 +65,8 @@ function PersonalSettings() {
   const [changingPassword, setChangingPassword] = useState(false)
   return (
     <>
+      <YourName />
+
       <Card>
         <CardHeader title="Appearance" />
         <div className="space-y-2 p-5 max-md:p-4">
@@ -98,7 +94,7 @@ function PersonalSettings() {
         <CardHeader title="Account" />
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 max-md:px-4">
           <span className="flex min-w-0 items-center gap-3">
-            <Avatar email={session?.user.email ?? '?'} />
+            <Avatar name={session?.user.email ?? '?'} />
             <span className="min-w-0">
               <span className="block truncate text-slate-800">{session?.user.email}</span>
               <span className="block text-xs text-slate-400">Signed in</span>
@@ -228,67 +224,10 @@ function PasswordDialog({ email, onClose }: { email: string; onClose: () => void
 
 function HouseholdSettings() {
   const { household } = useHousehold()
-  const { session } = useAuth()
   const qc = useQueryClient()
-  const [email, setEmail] = useState('')
   const [name, setName] = useState(household.name)
-  const [inviting, setInviting] = useState(false)
   const online = useOnline()
-
-  const members = useMembers()
-  const invites = useQuery({
-    queryKey: ['invites', household.id],
-    queryFn: async () =>
-      unwrap(
-        await supabase.from('household_invites').select('*').eq('household_id', household.id).order('created_at'),
-      ) as Invite[],
-  })
-
-  const isOwner = members.data?.some((m) => m.user_id === session?.user.id && m.role === 'owner')
-  const pendingInvites = invites.data?.filter((i) => !i.accepted_at) ?? []
-
-  const inviteUser = useInviteUser()
-  function sendInvite(addr: string, onSent?: () => void) {
-    const to = addr.trim().toLowerCase()
-    inviteUser.mutate(
-      { email: to, householdId: household.id },
-      {
-        onSuccess: (status) => {
-          onSent?.()
-          toast.success(
-            status === 'added_to_household'
-              ? `${to} already has an account. They'll join ${household.name} the next time they open the app.`
-              : `Invite email sent to ${to}.`,
-          )
-          qc.invalidateQueries({ queryKey: ['invites', household.id] })
-        },
-        onError: (e: Error) => toast.error(e.message),
-      },
-    )
-  }
-
-  const removeInvite = useMutation({
-    mutationFn: async (id: string) => {
-      unwrap(await supabase.from('household_invites').delete().eq('id', id))
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['invites', household.id] }),
-    onError: (e: Error) => toast.error(e.message),
-  })
-
-  function closeInvite() {
-    setInviting(false)
-    setEmail('')
-  }
-
-  const removeMember = useMutation({
-    mutationFn: async (userId: string) => {
-      unwrap(
-        await supabase.from('household_members').delete().eq('household_id', household.id).eq('user_id', userId),
-      )
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.members(household.id) }),
-    onError: (e: Error) => toast.error(e.message),
-  })
+  const isAdmin = household.role === 'admin'
 
   const rename = useMutation({
     mutationFn: async () => {
@@ -296,111 +235,66 @@ function HouseholdSettings() {
     },
     onSuccess: () => {
       toast.success('Household renamed')
-      qc.invalidateQueries({ queryKey: ['households'] })
+      qc.invalidateQueries({ queryKey: householdKeys.mine })
     },
     onError: (e: Error) => toast.error(e.message),
   })
-
-  function onInvite(e: FormEvent) {
-    e.preventDefault()
-    if (email.trim()) sendInvite(email, closeInvite)
-  }
 
   return (
     <fieldset disabled={!online} className="min-w-0 space-y-4 md:space-y-6">
       <Card>
         <CardHeader title="Name" />
         <div className="flex gap-2 p-5 max-md:p-4">
-          <Input value={name} onChange={(e) => setName(e.target.value)} disabled={!isOwner} />
-          <Button onClick={() => rename.mutate()} disabled={!isOwner || !name.trim() || name === household.name}>
-            Rename
-          </Button>
+          <Input aria-label="Household name" value={name} onChange={(e) => setName(e.target.value)} disabled={!isAdmin} />
+          {isAdmin && (
+            <Button onClick={() => rename.mutate()} disabled={!name.trim() || name === household.name}>
+              Rename
+            </Button>
+          )}
         </div>
       </Card>
-
-      <Card>
-        <CardHeader
-          title="Members"
-          actions={
-            isOwner && (
-              <Button variant="outline" size="sm" onClick={() => setInviting(true)}>
-                <UserPlus className="h-4 w-4" /> Invite
-              </Button>
-            )
-          }
-        />
-        <ul className="divide-y divide-slate-100">
-          {members.data?.map((m) => (
-            <li key={m.user_id} className="flex items-center justify-between gap-2 px-5 py-3 max-md:px-4">
-              <span className="flex min-w-0 items-center gap-3">
-                <Avatar email={m.email} />
-                <span className="truncate text-slate-800">{m.email}</span>
-                <Pill active={m.role === 'owner'}>{m.role}</Pill>
-              </span>
-              {isOwner && m.user_id !== session?.user.id && (
-                <Button variant="ghost" size="icon" onClick={() => removeMember.mutate(m.user_id)} title="Remove member">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </li>
-          ))}
-          {isOwner &&
-            pendingInvites.map((i) => (
-              <li key={i.id} className="flex items-center justify-between gap-2 px-5 py-3 max-md:px-4">
-                <span className="flex min-w-0 items-center gap-3">
-                  <Avatar email={i.email} />
-                  <span className="truncate text-slate-500">{i.email}</span>
-                  <Pill active={false}>invited</Pill>
-                </span>
-                <span className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={inviteUser.isPending}
-                    onClick={() => sendInvite(i.email)}
-                    title="Send the invite email again"
-                  >
-                    <Send className="h-3.5 w-3.5" /> <span className="max-md:hidden">Resend</span>
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => removeInvite.mutate(i.id)} title="Delete invite">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </span>
-              </li>
-            ))}
-        </ul>
-        {inviting && (
-          <Dialog open onOpenChange={(open) => !open && closeInvite()}>
-            <DialogContent title="Invite a family member">
-              <form onSubmit={onInvite} className="space-y-4">
-                <div>
-                  <Label htmlFor="invite">Email</Label>
-                  <Input
-                    id="invite"
-                    type="email"
-                    autoFocus
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                  <p className="mt-2 text-xs text-slate-400">
-                    We'll email them a link to set a password. They join {household.name} when they first sign in. If
-                    they already have an account, they're added the next time they open the app.
-                  </p>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="ghost" onClick={closeInvite}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" needsOnline disabled={!email.trim() || inviteUser.isPending}>
-                    Send invite
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        )}
-      </Card>
+      <PeopleSettings />
     </fieldset>
+  )
+}
+
+/** The name other people see for you on trips. Saved per household, like the rest of the people list. */
+function YourName() {
+  const { session } = useAuth()
+  const { data: people } = usePeople()
+  const update = useUpdatePerson()
+  const me = people?.find((p) => p.user_id === session?.user.id)
+  const [typed, setTyped] = useState<string | null>(null)
+  const name = typed ?? me?.name ?? ''
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!me || !name.trim()) return
+    update.mutate(
+      { id: me.id, name },
+      {
+        onSuccess: () => {
+          toast.success('Name saved')
+          setTyped(null)
+        },
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Your name" />
+      <form onSubmit={onSubmit} className="space-y-2 p-5 max-md:p-4">
+        <div className="flex gap-2">
+          <Input aria-label="Your name" value={name} onChange={(e) => setTyped(e.target.value)} disabled={!me} />
+          <Button type="submit" needsOnline disabled={!me || !name.trim() || name.trim() === me.name || update.isPending}>
+            Save
+          </Button>
+        </div>
+        <p className="text-xs text-slate-400">How you appear on trips and in the people list.</p>
+      </form>
+    </Card>
   )
 }
 
@@ -490,26 +384,5 @@ function TimeFormatPicker() {
         </button>
       ))}
     </div>
-  )
-}
-
-function Avatar({ email }: { email: string }) {
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold uppercase text-brand-800">
-      {email.charAt(0)}
-    </span>
-  )
-}
-
-function Pill({ active, children }: { active: boolean; children: ReactNode }) {
-  return (
-    <span
-      className={cn(
-        'rounded-full px-2 py-0.5 text-[11px] font-medium',
-        active ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-500',
-      )}
-    >
-      {children}
-    </span>
   )
 }

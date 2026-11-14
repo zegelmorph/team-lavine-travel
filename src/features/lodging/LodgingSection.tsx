@@ -15,11 +15,14 @@ import { TimeInput } from '@/components/ui/time-input'
 import { confirmAction } from '@/components/ui/confirm'
 import { PlaceSearch } from '@/components/PlaceSearch'
 import { MapEmbed } from '@/components/MapEmbed'
+import { ReadOnlyFields } from '@/components/ReadOnlyFields'
+import { useCanEdit } from '@/features/trips/access'
 import { plural } from '@/lib/utils'
 
 export function LodgingSection({ trip }: { trip: TripBundle }) {
   const [editing, setEditing] = useState<Lodging | 'new' | null>(null)
   const remove = useDeleteTripRow('travel_lodging', trip.id)
+  const canEdit = useCanEdit()
 
   async function onDelete(l: Lodging) {
     if (await confirmAction({ title: `Delete ${l.name}?` })) remove.mutate(l.id, { onError: (e) => toast.error(e.message) })
@@ -30,15 +33,17 @@ export function LodgingSection({ trip }: { trip: TripBundle }) {
       <CardHeader
         title="Lodging"
         actions={
-          <Button variant="outline" size="sm" needsOnline onClick={() => setEditing('new')}>
-            <Plus className="h-4 w-4" /> Add
-          </Button>
+          canEdit && (
+            <Button variant="outline" size="sm" needsOnline onClick={() => setEditing('new')}>
+              <Plus className="h-4 w-4" /> Add
+            </Button>
+          )
         }
       />
       {trip.lodging.length === 0 ? (
         <div className="px-5 py-8 text-center text-slate-500">
           <BedDouble className="mx-auto mb-2 h-6 w-6 text-slate-300" />
-          No places to stay yet. Search for a hotel to add it with its address, phone and map.
+          {canEdit ? 'No places to stay yet. Search for a hotel to add it with its address, phone and map.' : 'No places to stay yet.'}
         </div>
       ) : (
         <ul className="divide-y divide-slate-100">
@@ -47,6 +52,7 @@ export function LodgingSection({ trip }: { trip: TripBundle }) {
               key={l.id}
               stay={l}
               destination={trip.destinations.find((d) => d.id === l.destination_id)?.name}
+              canEdit={canEdit}
               onEdit={() => setEditing(l)}
               onDelete={() => onDelete(l)}
             />
@@ -58,7 +64,19 @@ export function LodgingSection({ trip }: { trip: TripBundle }) {
   )
 }
 
-function LodgingRow({ stay: l, destination, onEdit, onDelete }: { stay: Lodging; destination?: string; onEdit: () => void; onDelete: () => void }) {
+function LodgingRow({
+  stay: l,
+  destination,
+  canEdit,
+  onEdit,
+  onDelete,
+}: {
+  stay: Lodging
+  destination?: string
+  canEdit: boolean
+  onEdit: () => void
+  onDelete: () => void
+}) {
   const { formatTime } = useTimeFormatters()
   const maps = googleMapsUrl(l)
   const embed = googleMapsEmbedUrl(l, destination)
@@ -74,14 +92,16 @@ function LodgingRow({ stay: l, destination, onEdit, onDelete }: { stay: Lodging;
               {formatDateRange(l.check_in, l.check_out)} · {plural(n, 'night')}
             </p>
           </div>
-          <span className="flex shrink-0">
-            <Button variant="ghost" size="icon" needsOnline onClick={onEdit} title="Edit">
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete">
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </span>
+          {canEdit && (
+            <span className="flex shrink-0">
+              <Button variant="ghost" size="icon" needsOnline onClick={onEdit} title="Edit">
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </span>
+          )}
         </div>
         <dl className="mt-3 space-y-1.5 text-sm text-slate-600">
           {l.confirmation && (
@@ -174,6 +194,7 @@ interface Draft {
 
 export function LodgingDialog({ trip, stay, onClose }: { trip: TripBundle; stay: Lodging | null; onClose: () => void }) {
   const save = useSaveTripRow<Lodging>('travel_lodging', trip.id)
+  const canEdit = useCanEdit()
   const single = trip.destinations.length === 1 ? trip.destinations[0] : undefined
   const [draft, setDraft] = useState<Draft>(() => ({
     name: stay?.name ?? '',
@@ -225,7 +246,7 @@ export function LodgingDialog({ trip, stay, onClose }: { trip: TripBundle; stay:
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!canSave) return
+    if (!canEdit || !canSave) return
     const trimmed = (s: string) => s.trim() || null
     save.mutate(
       {
@@ -253,123 +274,127 @@ export function LodgingDialog({ trip, stay, onClose }: { trip: TripBundle; stay:
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title={stay ? 'Edit stay' : 'Add stay'} className="max-w-xl md:max-w-4xl" fullScreenOnMobile>
-        <form onSubmit={onSubmit} className="grid gap-x-6 gap-y-4 md:grid-cols-2">
-          <div className="space-y-4">
+      <DialogContent title={!canEdit ? 'Stay' : stay ? 'Edit stay' : 'Add stay'} className="max-w-xl md:max-w-4xl" fullScreenOnMobile>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <ReadOnlyFields readOnly={!canEdit} className="grid gap-x-6 gap-y-4 md:grid-cols-2">
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="l-name">Hotel or rental</Label>
+                <PlaceSearch
+                  id="l-name"
+                  kind="lodging"
+                  autoFocus={!stay}
+                  value={draft.name}
+                  placeholder="Search hotels"
+                  onChange={(name) => set({ name })}
+                  onPick={(p) => {
+                    set({
+                      name: p.name,
+                      address: p.address ?? '',
+                      place_id: p.placeId,
+                      lat: p.lat,
+                      lng: p.lng,
+                      phone: p.phone ?? '',
+                      website: p.website ?? '',
+                      google_maps_url: p.googleMapsUri,
+                      rating: p.rating,
+                    })
+                    setMapPlace({ name: p.name, address: p.address ?? null, lat: p.lat, lng: p.lng })
+                  }}
+                />
+              </div>
+              <div>
+                <Label htmlFor="l-address">Address</Label>
+                <Input id="l-address" value={draft.address} onChange={(e) => set({ address: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="l-phone">Phone</Label>
+                  <Input id="l-phone" type="tel" value={draft.phone} onChange={(e) => set({ phone: e.target.value })} />
+                </div>
+                <div>
+                  <Label htmlFor="l-web">Website</Label>
+                  <Input id="l-web" type="url" value={draft.website} onChange={(e) => set({ website: e.target.value })} />
+                </div>
+              </div>
+              {trip.destinations.length > 0 && (
+                <div>
+                  <Label htmlFor="l-dest">Destination</Label>
+                  <Select id="l-dest" value={draft.destination_id} onChange={(e) => pickDestination(e.target.value)} className="w-full">
+                    <option value="">None</option>
+                    {trip.destinations.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
+                <div>
+                  <Label htmlFor="l-in">Check in</Label>
+                  <DateInput id="l-in" value={draft.check_in} onChange={(check_in) => set({ check_in })} className={`${field} w-full`} />
+                </div>
+                <div>
+                  <Label htmlFor="l-in-time">Time</Label>
+                  <TimeInput id="l-in-time" value={draft.check_in_time} onChange={(check_in_time) => set({ check_in_time })} />
+                </div>
+                <div>
+                  <Label htmlFor="l-out">Check out</Label>
+                  <DateInput id="l-out" value={draft.check_out} onChange={(check_out) => set({ check_out })} className={`${field} w-full`} />
+                </div>
+                <div>
+                  <Label htmlFor="l-out-time">Time</Label>
+                  <TimeInput id="l-out-time" value={draft.check_out_time} onChange={(check_out_time) => set({ check_out_time })} />
+                </div>
+              </div>
+              {badRange && <p className="text-xs text-red-700">Check out is before check in.</p>}
+              <div>
+                <Label htmlFor="l-conf">Confirmation</Label>
+                <Input id="l-conf" value={draft.confirmation} onChange={(e) => set({ confirmation: e.target.value })} />
+              </div>
+            </div>
             <div>
-              <Label htmlFor="l-name">Hotel or rental</Label>
-              <PlaceSearch
-                id="l-name"
-                kind="lodging"
-                autoFocus={!stay}
-                value={draft.name}
-                placeholder="Search hotels"
-                onChange={(name) => set({ name })}
-                onPick={(p) => {
-                  set({
-                    name: p.name,
-                    address: p.address ?? '',
-                    place_id: p.placeId,
-                    lat: p.lat,
-                    lng: p.lng,
-                    phone: p.phone ?? '',
-                    website: p.website ?? '',
-                    google_maps_url: p.googleMapsUri,
-                    rating: p.rating,
-                  })
-                  setMapPlace({ name: p.name, address: p.address ?? null, lat: p.lat, lng: p.lng })
-                }}
+              {map ? (
+                <>
+                  <MapEmbed title={`Map of ${mapPlace.name}`} src={map.embed} interactive="desktop" className="h-36 sm:h-56 md:h-80" />
+                  {map.link && (
+                    <a
+                      href={map.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-900"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Open in Google Maps
+                    </a>
+                  )}
+                </>
+              ) : (
+                <div className="flex h-56 flex-col items-center justify-center gap-2 rounded-xl bg-slate-50 text-center text-xs text-slate-400 max-md:hidden md:h-80">
+                  <MapPin className="h-5 w-5" />
+                  Search for the place and its map shows here.
+                </div>
+              )}
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="l-notes">Notes</Label>
+              <Textarea
+                id="l-notes"
+                value={draft.notes}
+                onChange={(e) => set({ notes: e.target.value })}
+                placeholder={canEdit ? 'Parking, door codes, Wi-Fi, who booked it...' : undefined}
               />
             </div>
-            <div>
-              <Label htmlFor="l-address">Address</Label>
-              <Input id="l-address" value={draft.address} onChange={(e) => set({ address: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="l-phone">Phone</Label>
-                <Input id="l-phone" type="tel" value={draft.phone} onChange={(e) => set({ phone: e.target.value })} />
-              </div>
-              <div>
-                <Label htmlFor="l-web">Website</Label>
-                <Input id="l-web" type="url" value={draft.website} onChange={(e) => set({ website: e.target.value })} />
-              </div>
-            </div>
-            {trip.destinations.length > 0 && (
-              <div>
-                <Label htmlFor="l-dest">Destination</Label>
-                <Select id="l-dest" value={draft.destination_id} onChange={(e) => pickDestination(e.target.value)} className="w-full">
-                  <option value="">None</option>
-                  {trip.destinations.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-            <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
-              <div>
-                <Label htmlFor="l-in">Check in</Label>
-                <DateInput id="l-in" value={draft.check_in} onChange={(check_in) => set({ check_in })} className={`${field} w-full`} />
-              </div>
-              <div>
-                <Label htmlFor="l-in-time">Time</Label>
-                <TimeInput id="l-in-time" value={draft.check_in_time} onChange={(check_in_time) => set({ check_in_time })} />
-              </div>
-              <div>
-                <Label htmlFor="l-out">Check out</Label>
-                <DateInput id="l-out" value={draft.check_out} onChange={(check_out) => set({ check_out })} className={`${field} w-full`} />
-              </div>
-              <div>
-                <Label htmlFor="l-out-time">Time</Label>
-                <TimeInput id="l-out-time" value={draft.check_out_time} onChange={(check_out_time) => set({ check_out_time })} />
-              </div>
-            </div>
-            {badRange && <p className="text-xs text-red-700">Check out is before check in.</p>}
-            <div>
-              <Label htmlFor="l-conf">Confirmation</Label>
-              <Input id="l-conf" value={draft.confirmation} onChange={(e) => set({ confirmation: e.target.value })} />
-            </div>
-          </div>
-          <div>
-            {map ? (
-              <>
-                <MapEmbed title={`Map of ${mapPlace.name}`} src={map.embed} interactive="desktop" className="h-36 sm:h-56 md:h-80" />
-                {map.link && (
-                  <a
-                    href={map.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-900"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Open in Google Maps
-                  </a>
-                )}
-              </>
-            ) : (
-              <div className="flex h-56 flex-col items-center justify-center gap-2 rounded-xl bg-slate-50 text-center text-xs text-slate-400 max-md:hidden md:h-80">
-                <MapPin className="h-5 w-5" />
-                Search for the place and its map shows here.
-              </div>
-            )}
-          </div>
-          <div className="md:col-span-2">
-            <Label htmlFor="l-notes">Notes</Label>
-            <Textarea
-              id="l-notes"
-              value={draft.notes}
-              onChange={(e) => set({ notes: e.target.value })}
-              placeholder="Parking, door codes, Wi-Fi, who booked it..."
-            />
-          </div>
-          <div className="flex justify-end gap-2 max-md:pb-4 md:col-span-2">
+          </ReadOnlyFields>
+          <div className="flex justify-end gap-2 max-md:pb-4">
             <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
+              {canEdit ? 'Cancel' : 'Close'}
             </Button>
-            <Button type="submit" needsOnline disabled={!canSave || save.isPending}>
-              {stay ? 'Save' : 'Add stay'}
-            </Button>
+            {canEdit && (
+              <Button type="submit" needsOnline disabled={!canSave || save.isPending}>
+                {stay ? 'Save' : 'Add stay'}
+              </Button>
+            )}
           </div>
         </form>
       </DialogContent>

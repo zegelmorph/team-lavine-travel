@@ -1,46 +1,48 @@
-import { useState, type FormEvent } from 'react'
-import { Plus, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Send, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { useDeleteTripRow, useMembers, useSaveTripRow, type TripBundle } from '@/lib/queries'
-import type { HouseholdMember, Participant } from '@/lib/types'
+import { useDeleteTripRow, usePeople, useSaveTripRow, type TripBundle } from '@/lib/queries'
+import type { Participant, Person } from '@/lib/types'
 import { CardSubheader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Combobox, type ComboOption } from '@/components/ui/combobox'
 import { useOnline } from '@/lib/useOnline'
+import { PersonDialog } from '@/features/people/PersonDialog'
+import { useSendInvite } from '@/features/people/useSendInvite'
+import { useCanEdit } from '../access'
 
-/** "jane.doe@x.com" -> "Jane Doe" */
-export function nameFromEmail(email: string): string {
-  return email
-    .split('@')[0]
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ')
-}
-
+/**
+ * Who's going. Travellers are picked from the household's people; typing a new name saves that person first. Whoever
+ * manages the trip can also invite a traveller who has an email to sign in, which lets them see this trip.
+ */
 export function TravelersPanel({ trip }: { trip: TripBundle }) {
-  const { data: members } = useMembers()
+  const canEdit = useCanEdit()
+  const online = useOnline()
+  const { data: people = [] } = usePeople()
   const save = useSaveTripRow<Participant>('travel_participants', trip.id)
   const remove = useDeleteTripRow('travel_participants', trip.id)
-  const [name, setName] = useState('')
-  const online = useOnline()
+  const { send, sendingTo } = useSendInvite()
+  const [addingName, setAddingName] = useState<string | null>(null)
 
-  const joined = new Set(trip.participants.map((p) => p.user_id).filter(Boolean))
-  const suggestions = (members ?? []).filter((m) => !joined.has(m.user_id))
+  const onTrip = useMemo(() => new Set(trip.participants.map((p) => p.person_id)), [trip.participants])
+  const options: ComboOption[] = useMemo(
+    () => people.filter((p) => !onTrip.has(p.id)).map((p) => ({ value: p.id, label: p.name, hint: p.email ?? undefined })),
+    [people, onTrip],
+  )
+  // Travellers with an email who can't sign in yet.
+  const toInvite = people.filter((p) => onTrip.has(p.id) && p.email && (p.access === 'none' || p.access === 'invited'))
 
-  function add(fields: Partial<Participant>) {
-    save.mutate({ ...fields, sort_order: trip.participants.length }, { onError: (e) => toast.error(e.message) })
+  function add(personId: string) {
+    save.mutate({ person_id: personId, sort_order: trip.participants.length }, { onError: (e) => toast.error(e.message) })
   }
 
-  function addMember(m: HouseholdMember) {
-    add({ user_id: m.user_id, display_name: nameFromEmail(m.email) })
-  }
-
-  function onSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!name.trim()) return
-    add({ display_name: name.trim() })
-    setName('')
+  function addByName(text: string) {
+    const name = text.trim()
+    if (!name) return
+    const known = people.find((p) => p.name.toLowerCase() === name.toLowerCase())
+    if (!known) setAddingName(name)
+    else if (onTrip.has(known.id)) toast.info(`${known.name} is already on this trip`)
+    else add(known.id)
   }
 
   return (
@@ -48,21 +50,21 @@ export function TravelersPanel({ trip }: { trip: TripBundle }) {
       <CardSubheader title="Travelers" />
       <div className="space-y-3 px-5 pb-4 pt-1 max-md:px-4">
         {trip.participants.length === 0 ? (
-          <p className="text-slate-400">Who's coming along?</p>
+          <p className="text-slate-400">{canEdit ? "Who's coming along?" : 'No travelers yet.'}</p>
         ) : (
           <ul className="flex flex-wrap gap-1.5">
             {trip.participants.map((p) => (
               <li key={p.id} className="flex items-center gap-1.5 rounded-full bg-brand-50 py-1 pl-1 pr-2 text-sm text-brand-800">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[11px] font-semibold uppercase">
-                  {p.display_name.charAt(0)}
+                  {p.person.name.charAt(0)}
                 </span>
-                {p.display_name}
-                {online && (
+                {p.person.name}
+                {canEdit && online && (
                   <button
                     type="button"
                     onClick={() => remove.mutate(p.id, { onError: (e) => toast.error(e.message) })}
                     className="-my-1 -mr-1.5 flex h-7 w-7 items-center justify-center rounded-full text-brand-700/60 hover:bg-brand-100 hover:text-brand-900 max-md:-my-2 max-md:h-9 max-md:w-9"
-                    aria-label={`Remove ${p.display_name}`}
+                    aria-label={`Remove ${p.person.name}`}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -71,29 +73,45 @@ export function TravelersPanel({ trip }: { trip: TripBundle }) {
             ))}
           </ul>
         )}
-        {online && suggestions.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {suggestions.map((m) => (
-              <button
-                key={m.user_id}
-                type="button"
-                onClick={() => addMember(m)}
-                className="flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:border-brand-400 hover:text-brand-800 max-md:px-3 max-md:py-2 max-md:text-sm"
-              >
-                <Plus className="h-3 w-3" /> {nameFromEmail(m.email)}
-              </button>
-            ))}
+        {canEdit && online && (
+          <div>
+            <Combobox
+              options={options}
+              value={null}
+              onChange={(id) => id && add(id)}
+              onCreate={addByName}
+              placeholder="Add someone"
+              openOnFocus
+              preferCreate
+              stayOnPick
+              commitOnLeave={false}
+            />
+            <p className="mt-1.5 text-xs text-slate-500">Pick someone, or type a new name to add them.</p>
           </div>
         )}
-        {online && (
-          <form onSubmit={onSubmit} className="flex gap-2">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add someone by name" />
-            <Button type="submit" variant="outline" disabled={!name.trim() || save.isPending}>
-              Add
-            </Button>
-          </form>
+        {canEdit && toInvite.length > 0 && (
+          <ul className="space-y-1 border-t border-slate-100 pt-3">
+            {toInvite.map((p) => (
+              <InviteRow key={p.id} person={p} sending={sendingTo === p.id} onSend={() => send(p)} />
+            ))}
+          </ul>
         )}
       </div>
+      {addingName !== null && <PersonDialog initialName={addingName} onClose={() => setAddingName(null)} onAdded={add} />}
     </section>
+  )
+}
+
+function InviteRow({ person, sending, onSend }: { person: Person; sending: boolean; onSend: () => void }) {
+  const invited = person.access === 'invited'
+  return (
+    <li className="flex items-center justify-between gap-2 text-xs text-slate-500">
+      <span className="min-w-0 truncate">
+        {invited ? `${person.name} hasn't signed in yet.` : `${person.name} can't see this trip yet.`}
+      </span>
+      <Button variant="ghost" size="sm" needsOnline disabled={sending} onClick={onSend} className="shrink-0">
+        <Send className="h-3.5 w-3.5" /> {invited ? 'Resend invite' : 'Send invite'}
+      </Button>
+    </li>
   )
 }

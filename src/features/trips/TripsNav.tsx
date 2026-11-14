@@ -1,13 +1,18 @@
 import { NavLink } from 'react-router-dom'
+import { Eye } from 'lucide-react'
 import { eyebrow } from '@/components/ui/card'
 import { useTrips } from '@/lib/queries'
 import { formatDateRange } from '@/lib/dates'
 import { cn } from '@/lib/utils'
-import { activeTrips } from './model'
+import { useAuth } from '@/features/auth/AuthProvider'
+import { useHousehold } from '@/features/auth/HouseholdProvider'
+import { activeTrips, tripAccess } from './model'
 
 /** Sidebar shortcuts to trips that are happening or being planned. */
 export function TripsNav() {
   const { data } = useTrips()
+  const { household } = useHousehold()
+  const { session } = useAuth()
   const trips = activeTrips(data ?? [])
 
   return (
@@ -31,6 +36,11 @@ export function TripsNav() {
                 <span className="flex items-center gap-2">
                   {t.status === 'happening' && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />}
                   <span className="truncate text-sm font-medium">{t.name}</span>
+                  {tripAccess(t, household.role, session?.user.id) === 'view' && (
+                    <span role="img" aria-label="View only" title="View only" className="ml-auto shrink-0">
+                      <Eye className="h-3 w-3 text-slate-400" />
+                    </span>
+                  )}
                 </span>
                 <span className="block truncate text-xs text-slate-400">{formatDateRange(t.start_date, t.end_date)}</span>
               </NavLink>

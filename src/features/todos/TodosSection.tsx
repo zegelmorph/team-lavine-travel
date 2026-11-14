@@ -8,12 +8,15 @@ import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Label, Textarea } from '@/components/ui/input'
+import { ReadOnlyFields } from '@/components/ReadOnlyFields'
+import { useCanEdit } from '@/features/trips/access'
 import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
 import { sortTodos, todoProgress } from './model'
 
 export function TodosSection({ trip }: { trip: TripBundle }) {
   const online = useOnline()
+  const canEdit = useCanEdit()
   const [hideDone, setHideDone] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const progress = todoProgress(trip.todos)
@@ -50,18 +53,18 @@ export function TodosSection({ trip }: { trip: TripBundle }) {
           </span>
         </div>
       )}
-      <AddTodo tripId={trip.id} />
+      {canEdit && <AddTodo tripId={trip.id} />}
 
       {trip.todos.length === 0 ? (
-        <p className="px-5 pb-8 pt-4 text-center text-slate-500">
-          {online ? 'Nothing to do yet. Add the first thing above.' : 'Nothing to do yet.'}
+        <p className={cn('px-5 pb-8 text-center text-slate-500', canEdit ? 'pt-4' : 'pt-8')}>
+          {online && canEdit ? 'Nothing to do yet. Add the first thing above.' : 'Nothing to do yet.'}
         </p>
       ) : visible.length === 0 ? (
-        <p className="px-5 pb-5 pt-2 text-center text-slate-500">All done.</p>
+        <p className={cn('px-5 pb-5 text-center text-slate-500', canEdit ? 'pt-2' : 'pt-5')}>All done.</p>
       ) : (
-        <ul className="divide-y divide-slate-100 px-4 pb-1.5 max-md:px-3">
+        <ul className={cn('divide-y divide-slate-100 px-4 pb-1.5 max-md:px-3', !canEdit && 'pt-1.5')}>
           {visible.map((todo) => (
-            <TodoRow key={todo.id} tripId={trip.id} todo={todo} onEdit={() => setEditingId(todo.id)} />
+            <TodoRow key={todo.id} tripId={trip.id} todo={todo} canEdit={canEdit} onEdit={() => setEditingId(todo.id)} />
           ))}
         </ul>
       )}
@@ -124,7 +127,7 @@ function run(promise: Promise<unknown>) {
   promise.catch((err: Error) => toast.error(err.message))
 }
 
-function TodoRow({ tripId, todo, onEdit }: { tripId: string; todo: Todo; onEdit: () => void }) {
+function TodoRow({ tripId, todo, canEdit, onEdit }: { tripId: string; todo: Todo; canEdit: boolean; onEdit: () => void }) {
   const save = useSaveTripRow<Todo>('travel_todos', tripId)
   const remove = useDeleteTripRow('travel_todos', tripId)
   const online = useOnline()
@@ -147,7 +150,7 @@ function TodoRow({ tripId, todo, onEdit }: { tripId: string; todo: Todo; onEdit:
         type="button"
         onClick={onEdit}
         className="flex min-w-0 flex-1 items-center gap-2 rounded py-1.5 text-left hover:text-slate-950 max-md:py-2.5"
-        title="Edit"
+        title={canEdit ? 'Edit' : 'Details'}
       >
         <span className={cn('min-w-0 flex-1 truncate', todo.done ? 'text-slate-400 line-through' : 'text-slate-800')}>{todo.title}</span>
         {todo.notes && (
@@ -156,16 +159,18 @@ function TodoRow({ tripId, todo, onEdit }: { tripId: string; todo: Todo; onEdit:
           </span>
         )}
       </button>
-      <Button
-        variant="ghost"
-        size="icon"
-        needsOnline
-        onClick={() => run(remove.mutateAsync(todo.id))}
-        title="Delete to-do"
-        aria-label={`Delete ${todo.title}`}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      {canEdit && (
+        <Button
+          variant="ghost"
+          size="icon"
+          needsOnline
+          onClick={() => run(remove.mutateAsync(todo.id))}
+          title="Delete to-do"
+          aria-label={`Delete ${todo.title}`}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      )}
     </li>
   )
 }
@@ -175,9 +180,11 @@ function EditTodoDialog({ tripId, todo, onClose }: { tripId: string; todo: Todo;
   const remove = useDeleteTripRow('travel_todos', tripId)
   const [title, setTitle] = useState(todo.title)
   const [notes, setNotes] = useState(todo.notes ?? '')
+  const canEdit = useCanEdit()
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
+    if (!canEdit) return
     save.mutate(
       { id: todo.id, title: title.trim(), notes: notes.trim() || null },
       { onSuccess: onClose, onError: (err) => toast.error(err.message) },
@@ -186,37 +193,50 @@ function EditTodoDialog({ tripId, todo, onClose }: { tripId: string; todo: Todo;
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title="Edit to-do" className="max-w-md">
+      <DialogContent title={canEdit ? 'Edit to-do' : 'To-do'} className="max-w-md">
         <form onSubmit={onSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="todo-title">To-do</Label>
-            <Input id="todo-title" autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="todo-notes">Notes</Label>
-            <Textarea id="todo-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Links, details, who to call..." />
-          </div>
+          <ReadOnlyFields readOnly={!canEdit} className="space-y-4">
+            <div>
+              <Label htmlFor="todo-title">To-do</Label>
+              <Input id="todo-title" autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="todo-notes">Notes</Label>
+              <Textarea
+                id="todo-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={canEdit ? 'Links, details, who to call...' : 'No notes.'}
+              />
+            </div>
+          </ReadOnlyFields>
           <div className="flex items-center justify-between gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              needsOnline
-              className="text-red-700"
-              onClick={() => {
-                // Closed first: the optimistic delete unmounts this dialog, and a rollback must not reopen it.
-                onClose()
-                run(remove.mutateAsync(todo.id))
-              }}
-            >
-              <Trash2 className="h-4 w-4" /> Delete
-            </Button>
+            {canEdit ? (
+              <Button
+                type="button"
+                variant="ghost"
+                needsOnline
+                className="text-red-700"
+                onClick={() => {
+                  // Closed first: the optimistic delete unmounts this dialog, and a rollback must not reopen it.
+                  onClose()
+                  run(remove.mutateAsync(todo.id))
+                }}
+              >
+                <Trash2 className="h-4 w-4" /> Delete
+              </Button>
+            ) : (
+              <span />
+            )}
             <span className="flex gap-2">
               <Button type="button" variant="ghost" onClick={onClose}>
-                Cancel
+                {canEdit ? 'Cancel' : 'Close'}
               </Button>
-              <Button type="submit" needsOnline disabled={!title.trim() || save.isPending}>
-                Save
-              </Button>
+              {canEdit && (
+                <Button type="submit" needsOnline disabled={!title.trim() || save.isPending}>
+                  Save
+                </Button>
+              )}
             </span>
           </div>
         </form>

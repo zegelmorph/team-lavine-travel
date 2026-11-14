@@ -14,12 +14,15 @@ import { DateInput } from '@/components/ui/date-input'
 import { TimeInput } from '@/components/ui/time-input'
 import { confirmAction } from '@/components/ui/confirm'
 import { PlaceSearch } from '@/components/PlaceSearch'
+import { ReadOnlyFields } from '@/components/ReadOnlyFields'
+import { useCanEdit } from '@/features/trips/access'
 import { cn } from '@/lib/utils'
 import { MODE_FIELDS, MODE_ICONS } from './modes'
 
 export function TransportSection({ trip }: { trip: TripBundle }) {
   const [editing, setEditing] = useState<Transport | 'new' | null>(null)
   const remove = useDeleteTripRow('travel_transport', trip.id)
+  const canEdit = useCanEdit()
 
   async function onDelete(t: Transport) {
     if (await confirmAction({ title: 'Delete this leg?' })) remove.mutate(t.id, { onError: (e) => toast.error(e.message) })
@@ -30,17 +33,21 @@ export function TransportSection({ trip }: { trip: TripBundle }) {
       <CardHeader
         title="Travel"
         actions={
-          <Button variant="outline" size="sm" needsOnline onClick={() => setEditing('new')}>
-            <Plus className="h-4 w-4" /> Add
-          </Button>
+          canEdit && (
+            <Button variant="outline" size="sm" needsOnline onClick={() => setEditing('new')}>
+              <Plus className="h-4 w-4" /> Add
+            </Button>
+          )
         }
       />
       {trip.transport.length === 0 ? (
-        <p className="px-5 py-8 text-center text-slate-500">Flights, drives, trains and boats. They show up on the schedule.</p>
+        <p className="px-5 py-8 text-center text-slate-500">
+          {canEdit ? 'Flights, drives, trains and boats. They show up on the schedule.' : 'No travel added yet.'}
+        </p>
       ) : (
         <ul className="divide-y divide-slate-100">
           {trip.transport.map((t) => (
-            <TransportRow key={t.id} leg={t} onEdit={() => setEditing(t)} onDelete={() => onDelete(t)} />
+            <TransportRow key={t.id} leg={t} canEdit={canEdit} onEdit={() => setEditing(t)} onDelete={() => onDelete(t)} />
           ))}
         </ul>
       )}
@@ -94,7 +101,7 @@ function Endpoint({
   )
 }
 
-function TransportRow({ leg, onEdit, onDelete }: { leg: Transport; onEdit: () => void; onDelete: () => void }) {
+function TransportRow({ leg, canEdit, onEdit, onDelete }: { leg: Transport; canEdit: boolean; onEdit: () => void; onDelete: () => void }) {
   const Icon = MODE_ICONS[leg.mode]
   const mode = TRANSPORT_MODE_LABELS[leg.mode]
   const title = [leg.carrier, leg.number].filter(Boolean).join(' ')
@@ -139,14 +146,16 @@ function TransportRow({ leg, onEdit, onDelete }: { leg: Transport; onEdit: () =>
           </div>
           {leg.notes && <p className="mt-2 text-xs text-slate-500">{leg.notes}</p>}
         </div>
-        <span className="col-start-3 row-start-1 flex">
-          <Button variant="ghost" size="icon" needsOnline onClick={onEdit} title="Edit">
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </span>
+        {canEdit && (
+          <span className="col-start-3 row-start-1 flex">
+            <Button variant="ghost" size="icon" needsOnline onClick={onEdit} title="Edit">
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </span>
+        )}
       </div>
     </li>
   )
@@ -198,6 +207,7 @@ export function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg:
   const setEnd = (end: 'depart' | 'arrive', patch: Partial<Record<'location' | 'place_id' | 'date' | 'time' | 'tz', string | null>>) =>
     set(Object.fromEntries(Object.entries(patch).map(([k, v]) => [`${end}_${k}`, v])) as Partial<Draft>)
   const labels = MODE_FIELDS[draft.mode]
+  const canEdit = useCanEdit()
 
   const zones = [
     ...new Set([localTimeZone(), ...trip.destinations.map((d) => d.timezone), draft.depart_tz, draft.arrive_tz].filter(Boolean) as string[]),
@@ -205,6 +215,7 @@ export function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg:
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
+    if (!canEdit) return
     const trimmed = (s: string) => s.trim() || null
     save.mutate(
       {
@@ -241,91 +252,95 @@ export function TransportDialog({ trip, leg, onClose }: { trip: TripBundle; leg:
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title={leg ? 'Edit travel' : 'Add travel'} className="max-w-xl" fullScreenOnMobile>
+      <DialogContent title={!canEdit ? 'Travel' : leg ? 'Edit travel' : 'Add travel'} className="max-w-xl" fullScreenOnMobile>
         <form onSubmit={onSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="t-mode">Type</Label>
-              <Select id="t-mode" value={draft.mode} onChange={(e) => set({ mode: e.target.value as TransportMode })} className="w-full">
-                {TRANSPORT_MODES.map((m) => (
-                  <option key={m} value={m}>
-                    {TRANSPORT_MODE_LABELS[m]}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="t-carrier">{labels.carrier}</Label>
-              <Input id="t-carrier" value={draft.carrier} onChange={(e) => set({ carrier: e.target.value })} />
-            </div>
-            {labels.number && (
+          <ReadOnlyFields readOnly={!canEdit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="t-number">{labels.number}</Label>
-                <Input id="t-number" value={draft.number} onChange={(e) => set({ number: e.target.value })} />
+                <Label htmlFor="t-mode">Type</Label>
+                <Select id="t-mode" value={draft.mode} onChange={(e) => set({ mode: e.target.value as TransportMode })} className="w-full">
+                  {TRANSPORT_MODES.map((m) => (
+                    <option key={m} value={m}>
+                      {TRANSPORT_MODE_LABELS[m]}
+                    </option>
+                  ))}
+                </Select>
               </div>
-            )}
-            <div>
-              <Label htmlFor="t-conf">Confirmation</Label>
-              <Input id="t-conf" value={draft.confirmation} onChange={(e) => set({ confirmation: e.target.value })} />
-            </div>
-          </div>
-
-          {(['depart', 'arrive'] as const).map((end) => (
-            <fieldset key={end} className="space-y-3 rounded-xl border border-slate-200/80 p-3">
-              <legend className="px-1 text-xs font-semibold text-slate-600">{end === 'depart' ? 'Departs' : 'Arrives'}</legend>
               <div>
-                <Label htmlFor={`t-${end}-loc`}>{end === 'depart' ? 'From' : 'To'}</Label>
-                <PlaceSearch
-                  id={`t-${end}-loc`}
-                  kind="any"
-                  value={draft[`${end}_location`]}
-                  placeholder={draft.mode === 'plane' ? 'Airport' : 'Station, port or address'}
-                  onChange={(location) => setEnd(end, { location, place_id: null })}
-                  onPick={(p) => setEnd(end, { location: p.name, place_id: p.placeId })}
-                />
+                <Label htmlFor="t-carrier">{labels.carrier}</Label>
+                <Input id="t-carrier" value={draft.carrier} onChange={(e) => set({ carrier: e.target.value })} />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-[1fr_7rem_1fr]">
+              {labels.number && (
                 <div>
-                  <Label htmlFor={`t-${end}-date`}>Date</Label>
-                  <DateInput
-                    id={`t-${end}-date`}
-                    value={draft[`${end}_date`]}
-                    onChange={(date) => {
-                      setEnd(end, { date })
-                      if (end === 'depart' && !draft.arrive_date) set({ arrive_date: date })
-                    }}
-                    clearable
-                    className={`${field} w-full`}
+                  <Label htmlFor="t-number">{labels.number}</Label>
+                  <Input id="t-number" value={draft.number} onChange={(e) => set({ number: e.target.value })} />
+                </div>
+              )}
+              <div>
+                <Label htmlFor="t-conf">Confirmation</Label>
+                <Input id="t-conf" value={draft.confirmation} onChange={(e) => set({ confirmation: e.target.value })} />
+              </div>
+            </div>
+
+            {(['depart', 'arrive'] as const).map((end) => (
+              <fieldset key={end} className="space-y-3 rounded-xl border border-slate-200/80 p-3">
+                <legend className="px-1 text-xs font-semibold text-slate-600">{end === 'depart' ? 'Departs' : 'Arrives'}</legend>
+                <div>
+                  <Label htmlFor={`t-${end}-loc`}>{end === 'depart' ? 'From' : 'To'}</Label>
+                  <PlaceSearch
+                    id={`t-${end}-loc`}
+                    kind="any"
+                    value={draft[`${end}_location`]}
+                    placeholder={draft.mode === 'plane' ? 'Airport' : 'Station, port or address'}
+                    onChange={(location) => setEnd(end, { location, place_id: null })}
+                    onPick={(p) => setEnd(end, { location: p.name, place_id: p.placeId })}
                   />
                 </div>
-                <div>
-                  <Label htmlFor={`t-${end}-time`}>Time</Label>
-                  <TimeInput id={`t-${end}-time`} value={draft[`${end}_time`]} onChange={(time) => setEnd(end, { time })} />
+                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-[1fr_7rem_1fr]">
+                  <div>
+                    <Label htmlFor={`t-${end}-date`}>Date</Label>
+                    <DateInput
+                      id={`t-${end}-date`}
+                      value={draft[`${end}_date`]}
+                      onChange={(date) => {
+                        setEnd(end, { date })
+                        if (end === 'depart' && !draft.arrive_date) set({ arrive_date: date })
+                      }}
+                      clearable
+                      className={`${field} w-full`}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`t-${end}-time`}>Time</Label>
+                    <TimeInput id={`t-${end}-time`} value={draft[`${end}_time`]} onChange={(time) => setEnd(end, { time })} />
+                  </div>
+                  <div className="sm:col-span-2 md:col-span-1">
+                    <Label htmlFor={`t-${end}-tz`}>Time zone</Label>
+                    {zoneSelect(`t-${end}-tz`, draft[`${end}_tz`], (tz) => setEnd(end, { tz }))}
+                  </div>
                 </div>
-                <div className="sm:col-span-2 md:col-span-1">
-                  <Label htmlFor={`t-${end}-tz`}>Time zone</Label>
-                  {zoneSelect(`t-${end}-tz`, draft[`${end}_tz`], (tz) => setEnd(end, { tz }))}
-                </div>
-              </div>
-            </fieldset>
-          ))}
+              </fieldset>
+            ))}
 
-          <div>
-            <Label htmlFor="t-notes">Notes</Label>
-            <Input
-              id="t-notes"
-              value={draft.notes}
-              onChange={(e) => set({ notes: e.target.value })}
-              placeholder="Seats, terminal, pickup details..."
-            />
-          </div>
+            <div>
+              <Label htmlFor="t-notes">Notes</Label>
+              <Input
+                id="t-notes"
+                value={draft.notes}
+                onChange={(e) => set({ notes: e.target.value })}
+                placeholder={canEdit ? 'Seats, terminal, pickup details...' : undefined}
+              />
+            </div>
+          </ReadOnlyFields>
           <div className="flex justify-end gap-2 max-md:pb-4">
             <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
+              {canEdit ? 'Cancel' : 'Close'}
             </Button>
-            <Button type="submit" needsOnline disabled={save.isPending}>
-              {leg ? 'Save' : 'Add travel'}
-            </Button>
+            {canEdit && (
+              <Button type="submit" needsOnline disabled={save.isPending}>
+                {leg ? 'Save' : 'Add travel'}
+              </Button>
+            )}
           </div>
         </form>
       </DialogContent>

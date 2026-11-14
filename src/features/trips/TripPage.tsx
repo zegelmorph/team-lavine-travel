@@ -13,8 +13,12 @@ import { confirmAction } from '@/components/ui/confirm'
 import { NotSavedOffline } from '@/components/Offline'
 import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
-import { countdown } from './model'
-import { STATUS_STYLES } from './StatusBadge'
+import { useAuth } from '@/features/auth/AuthProvider'
+import { useHousehold } from '@/features/auth/HouseholdProvider'
+import { TripAccessContext, useCanEdit } from './access'
+import { countdown, tripAccess } from './model'
+import { STATUS_STYLES, StatusBadge } from './StatusBadge'
+import { ViewOnlyBadge } from './ViewOnlyBadge'
 import { tripRange } from './tripRange'
 import { DetailsTab } from './details/DetailsTab'
 import { ScheduleTab } from '@/features/schedule/ScheduleTab'
@@ -37,6 +41,8 @@ type TripTab = (typeof TABS)[number][0]
 
 export function TripPage() {
   const { tripId = '' } = useParams()
+  const { household } = useHousehold()
+  const { session } = useAuth()
   const { data: trip, isPending, isPaused, error } = useTrip(tripId)
   const [params, setParams] = useSearchParams()
   const tab = (TABS.find(([id]) => id === params.get('tab'))?.[0] ?? 'details') as TripTab
@@ -58,19 +64,21 @@ export function TripPage() {
   }
 
   return (
-    <div className={cn('mx-auto space-y-4 p-3 pb-24 md:space-y-6 md:p-6 lg:p-8', tab === 'schedule' ? 'max-w-none' : 'max-w-5xl')}>
-      <TripHeader trip={trip} />
-      <div className="-mx-3 overflow-x-auto px-3 md:mx-0 md:px-0">
-        <PillTabs value={tab} options={TABS} onChange={setTab} />
+    <TripAccessContext value={tripAccess(trip, household.role, session?.user.id)}>
+      <div className={cn('mx-auto space-y-4 p-3 pb-24 md:space-y-6 md:p-6 lg:p-8', tab === 'schedule' ? 'max-w-none' : 'max-w-5xl')}>
+        <TripHeader trip={trip} />
+        <div className="-mx-3 overflow-x-auto px-3 md:mx-0 md:px-0">
+          <PillTabs value={tab} options={TABS} onChange={setTab} />
+        </div>
+        {tab === 'details' && <DetailsTab trip={trip} />}
+        {tab === 'travel' && <TransportSection trip={trip} />}
+        {tab === 'lodging' && <LodgingSection trip={trip} />}
+        {tab === 'events' && <EventsSection trip={trip} />}
+        {tab === 'packing' && <PackingSection trip={trip} />}
+        {tab === 'todos' && <TodosSection trip={trip} />}
+        {tab === 'schedule' && <ScheduleTab trip={trip} onShowDetails={() => setTab('details')} />}
       </div>
-      {tab === 'details' && <DetailsTab trip={trip} />}
-      {tab === 'travel' && <TransportSection trip={trip} />}
-      {tab === 'lodging' && <LodgingSection trip={trip} />}
-      {tab === 'events' && <EventsSection trip={trip} />}
-      {tab === 'packing' && <PackingSection trip={trip} />}
-      {tab === 'todos' && <TodosSection trip={trip} />}
-      {tab === 'schedule' && <ScheduleTab trip={trip} onShowDetails={() => setTab('details')} />}
-    </div>
+    </TripAccessContext>
   )
 }
 
@@ -80,6 +88,7 @@ function TripHeader({ trip }: { trip: TripBundle }) {
   const remove = useDeleteTrip()
   const [editing, setEditing] = useState(false)
   const online = useOnline()
+  const canEdit = useCanEdit()
   const { start, end } = tripRange(trip)
   const until = countdown(start, end, todayISO())
 
@@ -115,12 +124,18 @@ function TripHeader({ trip }: { trip: TripBundle }) {
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">
             <span className="truncate">{trip.name}</span>
-            <Button variant="ghost" size="icon" needsOnline onClick={() => setEditing(true)} title="Rename trip">
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete trip" className="-ml-1.5">
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            {canEdit ? (
+              <>
+                <Button variant="ghost" size="icon" needsOnline onClick={() => setEditing(true)} title="Rename trip">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete trip" className="-ml-1.5">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <ViewOnlyBadge />
+            )}
           </h1>
           <p className="text-slate-500">
             {formatDateRange(start, end)}
@@ -128,19 +143,23 @@ function TripHeader({ trip }: { trip: TripBundle }) {
           </p>
         </div>
         <div className="flex flex-col items-start gap-1 md:items-end">
-          <Select
-            aria-label="Status"
-            value={trip.status}
-            disabled={!online}
-            onChange={(e) => setStatus(e.target.value as TripStatus)}
-            className={cn('h-8 rounded-full border-0 pl-3 text-xs font-medium max-md:h-9', STATUS_STYLES[trip.status])}
-          >
-            {TRIP_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {TRIP_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </Select>
+          {canEdit ? (
+            <Select
+              aria-label="Status"
+              value={trip.status}
+              disabled={!online}
+              onChange={(e) => setStatus(e.target.value as TripStatus)}
+              className={cn('h-8 rounded-full border-0 pl-3 text-xs font-medium max-md:h-9', STATUS_STYLES[trip.status])}
+            >
+              {TRIP_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {TRIP_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <StatusBadge status={trip.status} className="px-3 py-1.5 text-xs" />
+          )}
         </div>
       </div>
       {editing && <EditTripDialog trip={trip} onClose={() => setEditing(false)} />}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeTrips, countdown, groupTrips } from './model'
+import { activeTrips, countdown, groupTrips, tripAccess } from './model'
 import type { TripStatus, TripSummary } from '@/lib/types'
 
 function trip(name: string, status: TripStatus, start: string | null = null, end: string | null = null): TripSummary {
@@ -10,6 +10,7 @@ function trip(name: string, status: TripStatus, start: string | null = null, end
     status,
     status_auto: true,
     notes: null,
+    owner_id: null,
     created_at: `2026-01-01T00:00:0${name.length % 10}Z`,
     updated_at: '2026-01-01T00:00:00Z',
     start_date: start,
@@ -38,6 +39,21 @@ describe('countdown', () => {
   })
   it('is empty without dates', () => {
     expect(countdown(null, '2026-10-03', today)).toBeNull()
+  })
+})
+
+describe('tripAccess', () => {
+  it('lets admins manage every trip', () => {
+    expect(tripAccess({ owner_id: 'someone-else' }, 'admin', 'me')).toBe('manage')
+    expect(tripAccess({ owner_id: null }, 'admin', 'me')).toBe('manage')
+  })
+  it('lets users manage only the trips they own', () => {
+    expect(tripAccess({ owner_id: 'me' }, 'user', 'me')).toBe('manage')
+    expect(tripAccess({ owner_id: 'someone-else' }, 'user', 'me')).toBe('view')
+  })
+  it('leaves a trip without an owner to the admins', () => {
+    expect(tripAccess({ owner_id: null }, 'user', 'me')).toBe('view')
+    expect(tripAccess({ owner_id: null }, 'user', undefined)).toBe('view')
   })
 })
 

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Combobox, type ComboOption } from '@/components/ui/combobox'
 import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
+import { useCanEdit } from '@/features/trips/access'
 import { usePackEventActions } from './eventLinks'
 import { availableCatalog, findByName, itemsForEvent, packProgress } from './model'
 
@@ -18,6 +19,7 @@ import { availableCatalog, findByName, itemsForEvent, packProgress } from './mod
  */
 export function EventPacking({ trip, event }: { trip: TripBundle; event: TripEvent }) {
   const online = useOnline()
+  const canEdit = useCanEdit()
   const qc = useQueryClient()
   const { data: catalog = [] } = usePackCatalog()
   const { data: categories = [] } = usePackCategories()
@@ -78,7 +80,7 @@ export function EventPacking({ trip, event }: { trip: TripBundle; event: TripEve
 
   return (
     <div className="space-y-4">
-      {online && (
+      {online && canEdit && (
         <div>
           <Combobox
             options={options}
@@ -114,23 +116,25 @@ export function EventPacking({ trip, event }: { trip: TripBundle; event: TripEve
                   />
                   <span className={cn('min-w-0 flex-1 truncate', item.packed ? 'text-slate-400 line-through' : 'text-slate-800')}>{item.name}</span>
                 </label>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  needsOnline
-                  title="Not taking it to this event"
-                  aria-label={`Take ${item.name} off this event`}
-                  onClick={() => {
-                    const id = linkId.get(item.id)
-                    if (id) unlink(id).catch((err: Error) => toast.error(err.message))
-                  }}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    needsOnline
+                    title="Not taking it to this event"
+                    aria-label={`Take ${item.name} off this event`}
+                    onClick={() => {
+                      const id = linkId.get(item.id)
+                      if (id) unlink(id).catch((err: Error) => toast.error(err.message))
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
-          {online && <p className="text-xs text-slate-500">Taking an item off an event keeps it on the packing list.</p>}
+          {online && canEdit && <p className="text-xs text-slate-500">Taking an item off an event keeps it on the packing list.</p>}
         </>
       )}
     </div>

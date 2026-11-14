@@ -9,9 +9,11 @@ You are a senior staff engineer and the architect of this codebase, reviewing co
 
 ## The system
 
-Team Lavine Travel: a trip planning SPA (destinations, weather, participants, transport, lodging, a schedule grid, packing lists). React 19 + Vite + TypeScript, TanStack Query, Tailwind, Radix primitives in `src/components/ui`. It talks directly to Supabase (Postgres, Auth, RLS, pg_cron, edge functions in `supabase/functions`). The browser holds only the anon key, so **Row Level Security is the security boundary**. Data is multi-tenant by `household_id`; trips are shared by the members of a household.
+Team Lavine Travel: a trip planning SPA (destinations, weather, travellers, transport, lodging, a schedule grid, packing lists). React 19 + Vite + TypeScript, TanStack Query, Tailwind, Radix primitives in `src/components/ui`. It talks directly to Supabase (Postgres, Auth, RLS, pg_cron, edge functions in `supabase/functions`). The browser holds only the anon key, so **Row Level Security is the security boundary**. Data is multi-tenant by `household_id`.
 
-**This app shares its Supabase project with Team Lavine Finances** (`personal-finance` repo). It reuses that project's auth, `households`, `household_members`, `is_household_member`, invites, and the `admin-invite-user` edge function, but must never change them.
+**Access model.** Everyone who can be on a trip is a row in `travel_people`. Admins (household owners) see and manage every trip. Regular users (other household members, and travel-only people invited from this app who have signed in) create trips and manage the ones they own (`travel_trips.owner_id`). A trip's travellers see all of it and can only tick packing items and to-dos. The UI mirrors this with `tripAccess()` in `src/features/trips/model.ts` and `useCanEdit()`; hiding a control is a courtesy, the database is what refuses.
+
+**This app shares its Supabase project with Team Lavine Finances** (`personal-finance` repo). It reuses that project's auth, `households`, `household_members`, `is_household_member`, `is_household_owner`, invites, `signup_allowlist`, and the `admin-invite-user` edge function, but must never change their definitions, policies or triggers. The only rows it writes there are `household_members.role` (through `travel_set_admin`), `household_members` deletes when an admin removes a member in Settings, and `signup_allowlist` inserts (through `travel_invite_person`).
 
 Layout: `src/features/<feature>/` holds pages and components, with pure logic in `model.ts` and tests in `model.test.ts`. Shared data access lives in `src/lib/queries.ts`, date helpers in `src/lib/dates.ts`, weather helpers in `src/lib/weather.ts`, place lookups in `src/lib/places.ts`, and schema changes in `supabase/migrations/` (timestamped, append-only).
 
@@ -25,18 +27,21 @@ Layout: `src/features/<feature>/` holds pages and components, with pure logic in
 ## What to check, in priority order
 
 **Shared-project isolation**
-- Every new database object (table, view, function, trigger, cron job, Vault secret) and edge function is prefixed `travel_` / `travel-`. Nothing alters, drops, or adds policies to finance objects.
+- Every new database object (table, view, function, trigger, cron job, Vault secret) and edge function is prefixed `travel_` / `travel-`. Nothing alters, drops, or adds policies to finance objects, and nothing writes finance rows beyond the three exceptions above.
 - Migrations are applied with the Supabase MCP `apply_migration` tool and the local file is renamed to the version it was assigned. Flag any use of `supabase db push` or `db reset` against the remote project; the migration history is shared with the finance repo.
 
 **Correctness and data integrity**
 - Date-only values stay `yyyy-MM-dd` strings parsed with `parseDay` / date-fns `parseISO`. Flag `new Date('2026-01-01')` style UTC and local-time shifts. Transport times are local wall-clock `timestamp` values paired with an IANA time zone; don't convert them through the browser's zone.
 - Status automation (`travel_refresh_statuses`) uses each destination's local "today", and respects `status_auto = false`.
-- Edge cases: trips with no destinations or dates, overlapping destinations, multi-day events and lodging, deleted destinations referenced by lodging, empty packing catalog.
+- Every screen that changes a trip works for all three kinds of viewer: admin, owner, and traveller (view only, with packing and to-do checkboxes still working).
+- Edge cases: trips with no owner, people with no email or no account, trips with no destinations or dates, overlapping destinations, multi-day events and lodging, deleted destinations referenced by lodging, empty packing catalog.
 
 **Security and tenancy**
-- Every new table has `household_id` (set by trigger from the parent trip where applicable), RLS enabled, a policy built on `is_household_member(household_id)` for both `using` and `with check`, `revoke all ... from anon`, and explicit grants to `authenticated`.
-- `security definer` functions `set search_path = ''`, check membership themselves, and don't leak other households' rows. Views use `security_invoker`.
-- There are no service-role keys or API keys in client code (`VITE_*` values are public). The Google Places key stays in the `travel-places` function secret. Edge functions validate the caller and inputs; the cron path checks `x-travel-cron-token`.
+- Every new table has `household_id` (set by trigger from the parent trip where applicable), RLS enabled, `revoke all ... from anon`, and explicit grants to `authenticated`. Policies are built on the travel helpers, not on `is_household_member()` (travel-only users aren't household members): rows that belong to a trip use `travel_can_view_trip(trip_id)` to read and `travel_can_edit_trip(trip_id)` to write; household-wide tables use `travel_is_user(household_id)`. Write policies cover both `using` and `with check`.
+- Travellers get update access only where they tick things off (`travel_pack_items`, `travel_todos`), and `travel_checklist_guard` limits them to that one column. A new column a traveller must not change is covered automatically; a new table they may tick needs the same trigger.
+- `travel_people` decides who has access (`email`, `user_id`, `invited_at`), so it has no write policies. It changes only through `security definer` functions that check the caller. Flag any direct client write to it, any path that links an account to a person without a confirmed email, and anything that lets a non-admin grant access beyond inviting a traveller on a trip they own.
+- `security definer` functions `set search_path = ''`, check access themselves, and don't leak other households' rows. Helpers that take an arbitrary user id (`travel_has_access`) aren't executable by clients. Views use `security_invoker`.
+- There are no service-role keys or API keys in client code (`VITE_*` values are public). The Google Places key stays in the `travel-places` function secret. Edge functions validate the caller and inputs; the cron path checks `x-travel-cron-token`. Where a function uses the service role (`travel-invite-user` to send the invite email, `travel-weather` to write weather), the decision about what the caller may do is made first with the caller's own token, and the service role does only the narrow write that follows from it.
 
 **Schema and migrations**
 - Applied migrations are never edited; changes go in a new, later-timestamped file. FKs have indexes, backfills are safe on existing data, and destructive changes are called out.

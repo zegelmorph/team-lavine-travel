@@ -3,27 +3,35 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase, unwrap } from './supabase'
 import type { MyHousehold } from './types'
 
-// Household membership, shared with the finance app (same tables and RPCs). Kept apart from queries.ts because these
-// hooks run before (and above) HouseholdProvider, which queries.ts depends on.
+// Which households the signed-in user can use. Households and their members are shared with the finance app; people
+// invited from here get travel access only. Kept apart from queries.ts because these hooks run before (and above)
+// HouseholdProvider, which queries.ts depends on.
 
 export const householdKeys = {
   /** Kept when switching households; everything else is cleared. */
   mine: ['households'] as const,
 }
 
-/** Accepts pending invites first so a newly invited user lands straight in the household. */
+/**
+ * Syncs first: accepts pending household invites and links the user to the people they were invited as, so someone
+ * newly invited lands straight in the household.
+ */
 export function useMyHouseholds() {
   return useQuery({
     queryKey: householdKeys.mine,
     queryFn: async () => {
-      await supabase.rpc('accept_invites')
-      return unwrap(await supabase.rpc('my_households')) as MyHousehold[]
+      const sync = await supabase.rpc('travel_sync_me')
+      const households = unwrap(await supabase.rpc('travel_my_households')) as MyHousehold[]
+      // A failed sync doesn't lock out someone who already has access. For someone with none it's the likely reason,
+      // so they're shown the error rather than told they haven't been invited.
+      if (sync.error && households.length === 0) throw new Error(sync.error.message)
+      return households
     },
   })
 }
 
 export function touchHousehold(id: string) {
-  void supabase.rpc('touch_household', { p_id: id })
+  void supabase.rpc('travel_touch_household', { p_id: id })
 }
 
 export function useCreateHousehold() {
@@ -45,20 +53,4 @@ export async function invokeFunction<T = unknown>(name: string, body: Record<str
   }
   if (error) throw new Error(error.message)
   return data as T
-}
-
-/**
- * Invites an email to a household using the finance app's `admin-invite-user` edge function. The invite link lands
- * on this site. If the email already has an account, they're added to the household instead.
- */
-export function useInviteUser() {
-  return useMutation({
-    mutationFn: async (v: { email: string; householdId: string }) =>
-      (
-        await invokeFunction<{ status: 'invited' | 'added_to_household' }>('admin-invite-user', {
-          ...v,
-          redirectTo: window.location.origin,
-        })
-      ).status,
-  })
 }

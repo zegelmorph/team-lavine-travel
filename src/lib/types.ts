@@ -5,18 +5,29 @@ export interface Household {
   name: string
 }
 
-export type HouseholdRole = 'owner' | 'member'
+/** Admins (the household's owners) manage every trip and the people; users manage the trips they own. */
+export type HouseholdRole = 'admin' | 'user'
 
-/** A household the signed-in user belongs to, from `my_households()`. */
+/** A household the signed-in user can use in this app, from `travel_my_households()`. */
 export interface MyHousehold extends Household {
   role: HouseholdRole
   last_accessed_at: string | null
 }
 
-export interface HouseholdMember {
-  user_id: string
-  email: string
-  role: HouseholdRole
+/** `invited` has been sent an invite and hasn't signed in yet; `none` is a saved name that can't sign in. */
+export type PersonAccess = 'admin' | 'user' | 'invited' | 'none'
+
+/** Someone who can be put on a trip, from `travel_people_list()`. */
+export interface Person {
+  id: string
+  name: string
+  email: string | null
+  /** Their account, once they have signed in. */
+  user_id: string | null
+  access: PersonAccess
+  /** Household members also share the finance app, and are the only people who can be made admin. */
+  is_member: boolean
+  invited_at: string | null
 }
 
 /** Row of `travel_user_settings`; absent until the user changes a setting. */
@@ -43,6 +54,8 @@ export interface Trip {
   status: TripStatus
   status_auto: boolean
   notes: string | null
+  /** The user who manages the trip alongside the admins; null leaves it to the admins. */
+  owner_id: string | null
   created_at: string
   updated_at: string
 }
@@ -88,9 +101,10 @@ export interface WeatherDay {
 export interface Participant {
   id: string
   trip_id: string
-  user_id: string | null
-  display_name: string
+  person_id: string
   sort_order: number
+  /** Joined from `travel_people`. Whether they can sign in comes from the people list. */
+  person: { name: string }
 }
 
 export type TransportMode = 'car' | 'plane' | 'train' | 'subway' | 'ferry' | 'cruise' | 'bus' | 'rideshare' | 'walk' | 'other'

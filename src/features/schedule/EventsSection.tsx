@@ -8,6 +8,7 @@ import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { MapEmbed } from '@/components/MapEmbed'
 import { cn, plural } from '@/lib/utils'
+import { useCanEdit } from '@/features/trips/access'
 import { tripRange } from '@/features/trips/tripRange'
 import { EventDialog, type EventDraft } from './EventDialog'
 import { EVENT_ICONS } from './eventKinds'
@@ -23,24 +24,27 @@ export function EventsSection({ trip }: { trip: TripBundle }) {
     events: trip.events.filter((e) => e.date === date),
   }))
   const firstDay = tripRange(trip).start ?? ''
+  const canEdit = useCanEdit()
 
   return (
     <Card>
       <CardHeader
         title="Events"
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            needsOnline
-            onClick={() => setEditing({ event: null, initial: { date: firstDay, start_time: '', end_time: '' } })}
-          >
-            <Plus className="h-4 w-4" /> Add
-          </Button>
+          canEdit && (
+            <Button
+              variant="outline"
+              size="sm"
+              needsOnline
+              onClick={() => setEditing({ event: null, initial: { date: firstDay, start_time: '', end_time: '' } })}
+            >
+              <Plus className="h-4 w-4" /> Add
+            </Button>
+          )
         }
       />
       {groups.length === 0 ? (
-        <p className="px-5 py-8 text-center text-slate-500">Shows, tours, dinners... booked or just ideas.</p>
+        <p className="px-5 py-8 text-center text-slate-500">{canEdit ? 'Shows, tours, dinners... booked or just ideas.' : 'No events yet.'}</p>
       ) : (
         <div className="divide-y divide-slate-100">
           {groups.map(({ date, events }) => (

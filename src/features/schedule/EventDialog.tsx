@@ -14,6 +14,8 @@ import { Switch } from '@/components/ui/switch'
 import { confirmAction } from '@/components/ui/confirm'
 import { PlaceSearch } from '@/components/PlaceSearch'
 import { MapEmbed } from '@/components/MapEmbed'
+import { ReadOnlyFields } from '@/components/ReadOnlyFields'
+import { useCanEdit } from '@/features/trips/access'
 import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
 import { eventMap, formatDuration, parseDuration, runTimeToSave, spanMinutes } from './model'
@@ -63,6 +65,7 @@ export function EventDialog({
   const save = useSaveTripRow<TripEvent>('travel_events', tripId)
   const remove = useDeleteTripRow('travel_events', tripId)
   const online = useOnline()
+  const canEdit = useCanEdit()
   const [tab, setTab] = useState<(typeof TABS)[number][0]>('details')
   const [title, setTitle] = useState(event?.title ?? '')
   const [date, setDate] = useState(event?.date ?? initial?.date ?? '')
@@ -100,7 +103,7 @@ export function EventDialog({
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!canSave) return
+    if (!canEdit || !canSave) return
     save.mutate(
       {
         ...(event ? { id: event.id } : {}),
@@ -127,145 +130,149 @@ export function EventDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title={event ? (online ? 'Edit event' : 'Event') : 'Add event'} className="max-w-md md:max-w-3xl" fullScreenOnMobile>
+      <DialogContent title={event ? (online && canEdit ? 'Edit event' : 'Event') : 'Add event'} className="max-w-md md:max-w-3xl" fullScreenOnMobile>
         {/* A new event has nothing to pack for until it's saved. */}
         {event && <PillTabs value={tab} options={TABS} onChange={setTab} className="mb-4" />}
         {/* Hidden rather than unmounted, so edits to the details survive a look at the packing tab. */}
-        <form onSubmit={onSubmit} className={cn('grid gap-x-6 gap-y-4 md:grid-cols-2', tab !== 'details' && 'hidden')}>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="ev-kind">Type</Label>
-              <Select id="ev-kind" autoFocus={!event} value={kind} onChange={(e) => setKind(e.target.value as EventKind)} className="w-full">
-                {EVENT_KINDS.map((k) => (
-                  <option key={k} value={k}>
-                    {EVENT_KIND_LABELS[k]}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="ev-title">What</Label>
-              <Input id="ev-title" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder={TITLE_HINTS[kind]} />
-            </div>
-            <Switch
-              label="Booked"
-              description={booked ? undefined : 'Still deciding. The date is optional until it is booked.'}
-              checked={booked}
-              onChange={setBooked}
-            />
-            {kind === 'show' && booked && (
+        <form onSubmit={onSubmit} className={cn('space-y-4', tab !== 'details' && 'hidden')}>
+          <ReadOnlyFields readOnly={!canEdit} className="grid gap-x-6 gap-y-4 md:grid-cols-2">
+            <div className="space-y-4">
               <div>
-                <Label htmlFor="ev-seats">Seats</Label>
-                <Input id="ev-seats" value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="Row F, seats 101–102" />
+                <Label htmlFor="ev-kind">Type</Label>
+                <Select id="ev-kind" autoFocus={!event} value={kind} onChange={(e) => setKind(e.target.value as EventKind)} className="w-full">
+                  {EVENT_KINDS.map((k) => (
+                    <option key={k} value={k}>
+                      {EVENT_KIND_LABELS[k]}
+                    </option>
+                  ))}
+                </Select>
               </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 sm:col-span-1">
-                <Label htmlFor="ev-date">{booked ? 'Date' : 'Date (optional)'}</Label>
-                <DateInput id="ev-date" value={date} onChange={setDate} clearable={!booked} className={`${field} w-full`} />
-              </div>
-              {(booked || date) && (
-                <label className="col-span-2 flex items-center gap-2 self-end pb-2 text-slate-600 sm:col-span-1">
-                  <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
-                  All day
-                </label>
-              )}
-              {timed && (
-                <>
-                  <div className="col-span-2 sm:col-span-1">
-                    <Label htmlFor="ev-start">Starts</Label>
-                    <TimeInput id="ev-start" required value={start} onChange={setStart} />
-                  </div>
-                  <div className="col-span-2 sm:col-span-1">
-                    <Label htmlFor="ev-end">Ends</Label>
-                    <TimeInput id="ev-end" value={end} onChange={setEnd} />
-                  </div>
-                </>
-              )}
-            </div>
-            {badTimes && <p className="text-xs text-red-700">The end time is before the start time.</p>}
-            {booked && !date && <p className="text-xs text-slate-500">Booked events need a date.</p>}
-            {kind === 'show' && (
               <div>
-                <Label htmlFor="ev-runtime">Run time</Label>
-                <Input
-                  id="ev-runtime"
-                  value={runTimeText ?? (span ? formatDuration(span) : '')}
-                  onChange={(e) => setRunTimeText(e.target.value)}
-                  onBlur={() => runTimeText?.trim() === '' && setRunTimeText(null)}
-                  placeholder="2h 30m"
-                  aria-invalid={badRunTime || undefined}
-                  aria-describedby="ev-runtime-hint"
-                />
-                <p id="ev-runtime-hint" className={cn('mt-1 text-xs', badRunTime ? 'text-red-700' : 'text-slate-500')}>
-                  {badRunTime ? (
-                    'Try something like 2h 30m, 2:30 or 150.'
-                  ) : ownRunTime != null && ownRunTime !== span ? (
-                    span ? (
-                      <>
-                        Adjusted.{' '}
-                        <button type="button" onClick={() => setRunTimeText(null)} className="font-medium text-brand-700 hover:text-brand-900">
-                          Use start to end ({formatDuration(span)})
-                        </button>
-                      </>
-                    ) : (
-                      'Saved as typed.'
-                    )
-                  ) : span ? (
-                    'From the start and end times. Type to adjust; the times stay as they are.'
-                  ) : (
-                    'Add an end time to fill this in, or type it.'
-                  )}
-                </p>
+                <Label htmlFor="ev-title">What</Label>
+                <Input id="ev-title" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder={TITLE_HINTS[kind]} />
               </div>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="ev-loc">Where</Label>
-            <PlaceSearch
-              id="ev-loc"
-              kind="any"
-              value={location}
-              placeholder="Search restaurants, theaters, places..."
-              onChange={(text) => {
-                setLocation(text)
-                // Typed over a looked-up place: its address and pin no longer apply.
-                if (place.place_id || place.address) setPlace(NO_PLACE)
-              }}
-              onPick={(p) => {
-                setLocation(p.name)
-                setMapLocation(p.name)
-                setPlace({ address: p.address, place_id: p.placeId, lat: p.lat, lng: p.lng, google_maps_url: p.googleMapsUri })
-              }}
-            />
-            {place.address && <p className="mt-1 truncate text-xs text-slate-500">{place.address}</p>}
-            {map && (
-              <div className="mt-2">
-                <MapEmbed title={`Map of ${mapLocation}`} src={map.embed} interactive="desktop" className="h-36 sm:h-44 md:h-52" />
-                {map.link && (
-                  <a
-                    href={map.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-900"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Open in Google Maps
-                  </a>
+              <Switch
+                label="Booked"
+                description={booked ? undefined : 'Still deciding. The date is optional until it is booked.'}
+                checked={booked}
+                onChange={setBooked}
+              />
+              {kind === 'show' && booked && (
+                <div>
+                  <Label htmlFor="ev-seats">Seats</Label>
+                  <Input id="ev-seats" value={seats} onChange={(e) => setSeats(e.target.value)} placeholder={canEdit ? 'Row F, seats 101–102' : undefined} />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="ev-date">{booked ? 'Date' : 'Date (optional)'}</Label>
+                  <DateInput id="ev-date" value={date} onChange={setDate} clearable={!booked} className={`${field} w-full`} />
+                </div>
+                {(booked || date) && (
+                  <label className="col-span-2 flex items-center gap-2 self-end pb-2 text-slate-600 sm:col-span-1">
+                    <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+                    All day
+                  </label>
+                )}
+                {timed && (
+                  <>
+                    <div className="col-span-2 sm:col-span-1">
+                      <Label htmlFor="ev-start">Starts</Label>
+                      <TimeInput id="ev-start" required value={start} onChange={setStart} />
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <Label htmlFor="ev-end">Ends</Label>
+                      <TimeInput id="ev-end" value={end} onChange={setEnd} />
+                    </div>
+                  </>
                 )}
               </div>
-            )}
-          </div>
-          <div className="md:col-span-2">
-            <Label htmlFor="ev-notes">Notes</Label>
-            <Textarea
-              id="ev-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="What to wear, who's going, reservation details..."
-            />
-          </div>
-          <div className="flex items-center justify-between gap-2 max-md:pb-4 md:col-span-2">
-            {event ? (
+              {badTimes && <p className="text-xs text-red-700">The end time is before the start time.</p>}
+              {canEdit && booked && !date && <p className="text-xs text-slate-500">Booked events need a date.</p>}
+              {kind === 'show' && (
+                <div>
+                  <Label htmlFor="ev-runtime">Run time</Label>
+                  <Input
+                    id="ev-runtime"
+                    value={runTimeText ?? (span ? formatDuration(span) : '')}
+                    onChange={(e) => setRunTimeText(e.target.value)}
+                    onBlur={() => runTimeText?.trim() === '' && setRunTimeText(null)}
+                    placeholder={canEdit ? '2h 30m' : undefined}
+                    aria-invalid={badRunTime || undefined}
+                    aria-describedby={canEdit ? 'ev-runtime-hint' : undefined}
+                  />
+                  {canEdit && (
+                    <p id="ev-runtime-hint" className={cn('mt-1 text-xs', badRunTime ? 'text-red-700' : 'text-slate-500')}>
+                      {badRunTime ? (
+                        'Try something like 2h 30m, 2:30 or 150.'
+                      ) : ownRunTime != null && ownRunTime !== span ? (
+                        span ? (
+                          <>
+                            Adjusted.{' '}
+                            <button type="button" onClick={() => setRunTimeText(null)} className="font-medium text-brand-700 hover:text-brand-900">
+                              Use start to end ({formatDuration(span)})
+                            </button>
+                          </>
+                        ) : (
+                          'Saved as typed.'
+                        )
+                      ) : span ? (
+                        'From the start and end times. Type to adjust; the times stay as they are.'
+                      ) : (
+                        'Add an end time to fill this in, or type it.'
+                      )}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="ev-loc">Where</Label>
+              <PlaceSearch
+                id="ev-loc"
+                kind="any"
+                value={location}
+                placeholder={canEdit ? 'Search restaurants, theaters, places...' : undefined}
+                onChange={(text) => {
+                  setLocation(text)
+                  // Typed over a looked-up place: its address and pin no longer apply.
+                  if (place.place_id || place.address) setPlace(NO_PLACE)
+                }}
+                onPick={(p) => {
+                  setLocation(p.name)
+                  setMapLocation(p.name)
+                  setPlace({ address: p.address, place_id: p.placeId, lat: p.lat, lng: p.lng, google_maps_url: p.googleMapsUri })
+                }}
+              />
+              {place.address && <p className="mt-1 truncate text-xs text-slate-500">{place.address}</p>}
+              {map && (
+                <div className="mt-2">
+                  <MapEmbed title={`Map of ${mapLocation}`} src={map.embed} interactive="desktop" className="h-36 sm:h-44 md:h-52" />
+                  {map.link && (
+                    <a
+                      href={map.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-900"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Open in Google Maps
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="ev-notes">Notes</Label>
+              <Textarea
+                id="ev-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={canEdit ? "What to wear, who's going, reservation details..." : undefined}
+              />
+            </div>
+          </ReadOnlyFields>
+          <div className="flex items-center justify-between gap-2 max-md:pb-4">
+            {event && canEdit ? (
               <Button type="button" variant="ghost" needsOnline onClick={onDelete} className="text-red-700">
                 <Trash2 className="h-4 w-4" /> Delete
               </Button>
@@ -274,11 +281,13 @@ export function EventDialog({
             )}
             <span className="flex gap-2">
               <Button type="button" variant="ghost" onClick={onClose}>
-                Cancel
+                {canEdit ? 'Cancel' : 'Close'}
               </Button>
-              <Button type="submit" needsOnline disabled={!canSave || save.isPending}>
-                {event ? 'Save' : 'Add event'}
-              </Button>
+              {canEdit && (
+                <Button type="submit" needsOnline disabled={!canSave || save.isPending}>
+                  {event ? 'Save' : 'Add event'}
+                </Button>
+              )}
             </span>
           </div>
         </form>

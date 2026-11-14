@@ -1,19 +1,19 @@
 import { useEffect } from 'react'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase, unwrap } from './supabase'
-import { invokeFunction } from './householdQueries'
+import { householdKeys, invokeFunction } from './householdQueries'
 import { useOnline } from './useOnline'
 import { useHousehold } from '@/features/auth/HouseholdProvider'
 import { orderLegs } from '@/features/transport/order'
 import type {
   Destination,
-  HouseholdMember,
   Lodging,
   PackCatalogItem,
   PackCategory,
   PackItem,
   PackItemEvent,
   Participant,
+  Person,
   Todo,
   Transport,
   Trip,
@@ -29,7 +29,7 @@ export const keys = {
   trip: (tripId: string) => ['trip', tripId] as const,
   weather: (tripId: string) => ['weather', tripId] as const,
   weatherRefresh: (tripId: string) => ['weather-refresh', tripId] as const,
-  members: (hh: string) => ['members', hh] as const,
+  people: (hh: string) => ['people', hh] as const,
   packCategories: (hh: string) => ['pack-categories', hh] as const,
   packCatalog: (hh: string) => ['pack-catalog', hh] as const,
 }
@@ -80,7 +80,8 @@ function tripQuery(tripId: string) {
         await supabase
           .from('travel_trips')
           .select(
-            '*, destinations:travel_destinations(*), participants:travel_participants(*), ' +
+            '*, destinations:travel_destinations(*), ' +
+              'participants:travel_participants(*, person:travel_people!travel_participants_person_fkey(name)), ' +
               'transport:travel_transport(*), lodging:travel_lodging(*), events:travel_events(*), ' +
               'packItems:travel_pack_items(*), packItemEvents:travel_pack_item_events(*), todos:travel_todos(*)',
           )
@@ -91,7 +92,7 @@ function tripQuery(tripId: string) {
       row.destinations.sort(
         (a, b) => a.sort_order - b.sort_order || (a.start_date ?? '9999').localeCompare(b.start_date ?? '9999') || a.name.localeCompare(b.name),
       )
-      row.participants.sort((a, b) => a.sort_order - b.sort_order || a.display_name.localeCompare(b.display_name))
+      row.participants.sort((a, b) => a.sort_order - b.sort_order || a.person.name.localeCompare(b.person.name))
       row.transport = orderLegs(row.transport)
       row.lodging.sort((a, b) => a.check_in.localeCompare(b.check_in))
       row.events.sort(
@@ -131,7 +132,8 @@ export function useCreateTrip() {
 export function useUpdateTrip(tripId: string) {
   const invalidate = useInvalidateTrip(tripId)
   return useMutation({
-    mutationFn: async (patch: Partial<Pick<Trip, 'name' | 'status' | 'status_auto' | 'notes'>>) => {
+    // Only admins may change owner_id; the database refuses it for anyone else.
+    mutationFn: async (patch: Partial<Pick<Trip, 'name' | 'status' | 'status_auto' | 'notes' | 'owner_id'>>) => {
       unwrap(await supabase.from('travel_trips').update(patch).eq('id', tripId))
     },
     onSuccess: invalidate,
@@ -347,14 +349,116 @@ export function useAutoRefreshWeather(tripId: string, enabled: boolean) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Household members (for participants)
+// People: who can go on a trip, and which of them can sign in. Every change goes through a database function,
+// which is where the rules about who may do what are enforced.
 // ---------------------------------------------------------------------------------------------------------------
 
-export function useMembers() {
+export function usePeople() {
   const { household } = useHousehold()
   return useQuery({
-    queryKey: keys.members(household.id),
-    queryFn: async () => unwrap(await supabase.rpc('household_member_list', { p_household_id: household.id })) as HouseholdMember[],
+    queryKey: keys.people(household.id),
+    queryFn: async () => unwrap(await supabase.rpc('travel_people_list', { p_household_id: household.id })) as Person[],
+  })
+}
+
+/** Names show on trips and trip cards, and someone losing access changes who owns their trips. */
+function useInvalidatePeople() {
+  const qc = useQueryClient()
+  const { household } = useHousehold()
+  return () => {
+    qc.invalidateQueries({ queryKey: keys.people(household.id) })
+    qc.invalidateQueries({ queryKey: keys.trips(household.id) })
+    qc.invalidateQueries({ queryKey: ['trip'] })
+  }
+}
+
+/** Saves a person and resolves to their id. Saving alone gives them no access; that takes an invite. */
+export function useAddPerson() {
+  const { household } = useHousehold()
+  const invalidate = useInvalidatePeople()
+  return useMutation({
+    mutationFn: async (v: { name: string; email?: string }) =>
+      unwrap(
+        await supabase.rpc('travel_add_person', { p_household_id: household.id, p_name: v.name, p_email: v.email?.trim() || null }),
+      ) as string,
+    onSuccess: invalidate,
+  })
+}
+
+/** The email is ignored for people with an account: theirs is the one they sign in with. */
+export function useUpdatePerson() {
+  const invalidate = useInvalidatePeople()
+  return useMutation({
+    mutationFn: async (v: { id: string; name: string; email?: string }) => {
+      unwrap(await supabase.rpc('travel_update_person', { p_id: v.id, p_name: v.name, p_email: v.email?.trim() || null }))
+    },
+    onSuccess: invalidate,
+  })
+}
+
+/**
+ * Emails a person their invite, or sends it again. Resolves to 'added' when that email already has an account, in
+ * which case nothing is sent and they get access the next time they open the app.
+ */
+export function useInvitePerson() {
+  const invalidate = useInvalidatePeople()
+  return useMutation({
+    mutationFn: async (personId: string) =>
+      (
+        await invokeFunction<{ status: 'invited' | 'added' }>('travel-invite-user', {
+          personId,
+          redirectTo: window.location.origin,
+        })
+      ).status,
+    // Also after a failure: the invite is recorded before the email is sent, so the person may now be invited.
+    onSettled: invalidate,
+  })
+}
+
+/**
+ * Stops someone signing in to this household, or withdraws their invite. They stay on their trips as a name. A
+ * household member is removed from the household first, which also ends their access to the finance app.
+ */
+export function useRemoveAccess() {
+  const { household } = useHousehold()
+  const invalidate = useInvalidatePeople()
+  return useMutation({
+    mutationFn: async (p: Pick<Person, 'id' | 'user_id' | 'is_member'>) => {
+      if (p.is_member && p.user_id) {
+        unwrap(await supabase.from('household_members').delete().eq('household_id', household.id).eq('user_id', p.user_id))
+      }
+      unwrap(await supabase.rpc('travel_revoke_person', { p_id: p.id }))
+    },
+    // Also after a failure: the first step may have gone through.
+    onSettled: invalidate,
+  })
+}
+
+/** Deletes someone who has no access, taking them off every trip. */
+export function useDeletePerson() {
+  const invalidate = useInvalidatePeople()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      unwrap(await supabase.rpc('travel_delete_person', { p_id: id }))
+    },
+    onSuccess: invalidate,
+  })
+}
+
+/** Makes a household member an admin or a regular user. Admin is the household's owner role, shared with finance. */
+export function useSetAdmin() {
+  const qc = useQueryClient()
+  const { household } = useHousehold()
+  const invalidate = useInvalidatePeople()
+  return useMutation({
+    mutationFn: async (v: { userId: string; admin: boolean }) => {
+      unwrap(await supabase.rpc('travel_set_admin', { p_household_id: household.id, p_user_id: v.userId, p_admin: v.admin }))
+    },
+    onSuccess: () => {
+      invalidate()
+      // An admin can step down, which changes their own role.
+      qc.invalidateQueries({ queryKey: householdKeys.mine })
+    },
   })
 }
 

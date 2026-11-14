@@ -1,8 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { MapPin, Plus, Users } from 'lucide-react'
+import { MapPin, Plus, UserCog, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { useCreateTrip, useTrips, useTripsWeather } from '@/lib/queries'
+import { useCreateTrip, usePeople, useTrips, useTripsWeather } from '@/lib/queries'
 import { formatDateRange, todayISO } from '@/lib/dates'
 import { describeWeather, formatTemp, useTempUnit } from '@/lib/weather'
 import { TRIP_STATUS_LABELS, type TripStatus, type TripSummary, type WeatherDay } from '@/lib/types'
@@ -15,8 +15,11 @@ import { MapEmbed } from '@/components/MapEmbed'
 import { NotSavedOffline } from '@/components/Offline'
 import { googleMapsEmbedUrl } from '@/lib/mapLinks'
 import { cn } from '@/lib/utils'
-import { countdown, groupTrips } from './model'
+import { useAuth } from '@/features/auth/AuthProvider'
+import { useHousehold } from '@/features/auth/HouseholdProvider'
+import { countdown, groupTrips, tripAccess } from './model'
 import { StatusBadge } from './StatusBadge'
+import { ViewOnlyBadge } from './ViewOnlyBadge'
 
 export function TripsPage() {
   const { data: trips, isPending, isPaused } = useTrips()
@@ -75,6 +78,17 @@ export function TripsPage() {
 }
 
 function TripCard({ trip, today, weather }: { trip: TripSummary; today: string; weather?: WeatherDay[] }) {
+  const { household } = useHousehold()
+  const { session } = useAuth()
+  const { data: people } = usePeople()
+  const viewOnly = tripAccess(trip, household.role, session?.user.id) === 'view'
+  // Admins see every trip, so they're told whose each one is when it isn't theirs.
+  const otherOwner =
+    household.role === 'admin' && trip.owner_id !== session?.user.id
+      ? trip.owner_id
+        ? people?.find((p) => p.user_id === trip.owner_id)?.name
+        : 'No owner'
+      : undefined
   const until = countdown(trip.start_date, trip.end_date, today)
   // Today's weather while the trip is on, otherwise the first day's.
   const glance = weather?.find((w) => w.date === today) ?? weather?.find((w) => w.date >= today)
@@ -90,6 +104,7 @@ function TripCard({ trip, today, weather }: { trip: TripSummary; today: string; 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <h3 className="min-w-0 truncate text-base font-semibold text-slate-900 group-hover:text-brand-800">{trip.name}</h3>
           <StatusBadge status={trip.status} className="shrink-0" />
+          {viewOnly && <ViewOnlyBadge />}
           {glance && Icon && (
             <span
               className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
@@ -117,6 +132,12 @@ function TripCard({ trip, today, weather }: { trip: TripSummary; today: string; 
             <span className="flex min-w-0 items-center gap-1">
               <Users className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{listNames(trip.participants)}</span>
+            </span>
+          )}
+          {otherOwner && (
+            <span className="flex min-w-0 items-center gap-1" title="Who manages this trip">
+              <UserCog className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{otherOwner}</span>
             </span>
           )}
         </div>

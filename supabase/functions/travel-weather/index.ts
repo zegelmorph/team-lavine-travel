@@ -2,8 +2,10 @@
 // Dates inside the 16-day forecast window get the forecast, past dates get what was recorded, and later dates get
 // "typical" weather, averaged from the same calendar days over the last three years.
 //
-// Signed-in app: POST { "tripId": "<uuid>", "destinationId"?: "<uuid>", "force"?: boolean }. Runs with the caller's
-//   token, so RLS limits it to their own trips. Destinations refreshed in the last few hours are skipped unless forced.
+// Signed-in app: POST { "tripId": "<uuid>", "destinationId"?: "<uuid>", "force"?: boolean }. Destinations are read
+//   with the caller's token, so RLS limits it to trips they can see; the weather is then written with the service
+//   role, because travellers can see a trip without being allowed to write to it. Destinations refreshed in the last
+//   few hours are skipped unless forced.
 // pg_cron: POST { "mode": "cron" } with header x-travel-cron-token (see the travel_automation migration). Refreshes
 //   every upcoming or in-progress destination using the service role.
 //
@@ -295,7 +297,9 @@ Deno.serve(async (req) => {
     const due = ((data ?? []) as Destination[]).filter(
       (d) => body.force === true || !d.weather_refreshed_at || Date.parse(d.weather_refreshed_at) < cutoff,
     )
-    return json(await refresh(db, due))
+    // Only destinations the caller could read get here, and only their weather and time zone are written.
+    const admin = createClient(SUPABASE_URL, serviceKey(), { auth: { persistSession: false } })
+    return json(await refresh(admin, due))
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : 'Weather refresh failed' }, 500)
   }
