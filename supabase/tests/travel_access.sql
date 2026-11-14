@@ -2,11 +2,15 @@
 -- household member who owns a trip, a travel-only traveller, an invited user who isn't on any trip, someone whose
 -- access was removed, someone from another household, and a visitor who isn't signed in.
 --
--- Run the whole file with the Supabase MCP execute_sql tool or in the SQL editor, after any change to the travel
--- policies, triggers or functions. It builds its own households and users and always ends by raising, so nothing it
--- does is kept. The "error" it ends with is the result:
---   TRAVEL ACCESS TESTS (rolled back): 143 passed, 0 failed
+-- Run the whole file after any change to the travel policies, triggers or functions:
+--   npx supabase db query --linked --project-ref bkehjssluczhindlyeme -f supabase/tests/travel_access.sql
+-- (or with the Supabase MCP execute_sql tool, or in the SQL editor). It builds its own households and users and
+-- always ends by raising, so nothing it does is kept. The "error" it ends with is the result:
+--   TRAVEL ACCESS TESTS (rolled back): 144 passed, 0 failed
 -- followed by one line for each check that failed.
+--
+-- This isn't a pgTAP test: `supabase test db` (which runs against a local database this repo doesn't use) would
+-- report it as failing, because it always ends by raising.
 
 do $test$
 declare
@@ -384,6 +388,9 @@ begin
   perform pg_temp.t('nor into another household', u_member,
     format('update public.travel_todos set trip_id = %L where id = %L', t_other, todo_member),
     'ERROR: You can only move%');
+  perform pg_temp.t('nor take one out of a trip they only view', u_trav,
+    format('update public.travel_pack_items set trip_id = %L where id = %L', t_trav, i_member),
+    'ERROR: Only the trip%');
   perform pg_temp.t('an admin can move one between trips', u_admin,
     format('update public.travel_todos set trip_id = %L where id = %L', t_member, todo_admin), '1');
 

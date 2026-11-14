@@ -27,10 +27,12 @@ npm run dev                  # http://localhost:5174 (finance runs on 5173)
 
 This app lives in the **Team Lavine** Supabase project (`bkehjssluczhindlyeme`) alongside the finance app.
 
-- **Reused, never modified:** `auth.users`, `households`, `household_members`, `household_invites`, `signup_allowlist`, `is_household_member()`, `is_household_owner()`, `my_households()`, `accept_invites()`, `create_household()`, `household_member_list()`, and the `admin-invite-user` edge function. Their definitions, policies and triggers are never changed. The only rows this app writes in them are:
+- **Reused, never modified:** `auth.users`, `households`, `household_members`, `signup_allowlist`, `is_household_member()`, `is_household_owner()`, `accept_invites()` and `create_household()`. Their definitions, policies and triggers are never changed. The finance app's other objects (`household_invites`, `my_households()`, `household_member_list()`, the `admin-invite-user` edge function, …) are not used here and are left alone. The only rows this app writes in the reused tables are:
+  - a new household and its first member, through the finance app's `create_household()`, when someone with no household creates one;
+  - `households.name`, when an admin renames the household in Settings (under the finance app's own policy);
   - `household_members.role`, set by `travel_set_admin()` when an admin makes a household member an admin or a regular user;
   - `household_members` deletes, when an admin removes a household member in Settings (this removes them from the finance app too);
-  - `signup_allowlist` inserts, made by `travel_invite_person()` so an invited person can create an account.
+  - `signup_allowlist` inserts, made by `travel_invite_person()` so an invited person can create an account. An existing row is left as it is.
 - **Owned by this app:** everything prefixed `travel_` (tables, the `travel_trip_summaries` view, functions, triggers, the `travel_status` / `travel_weather` cron jobs, the `travel_cron_token` Vault secret) and the `travel-places` / `travel-weather` / `travel-invite-user` edge functions.
 - **Applying migrations:** write a new file in `supabase/migrations/`, apply it with the Supabase MCP `apply_migration` tool (or paste it into the SQL editor), then rename the local file to the version Supabase assigned. **Never run `supabase db push` or `supabase db reset` against the remote project** — the migration history is shared with the finance repo and the CLI would try to reconcile it.
 - **Deploying functions:** `npx supabase functions deploy travel-places travel-weather travel-invite-user --project-ref bkehjssluczhindlyeme` (the `verify_jwt` settings come from `supabase/config.toml`).
@@ -59,6 +61,14 @@ Every travel table carries `household_id` (copied from the parent trip by trigge
 - `travel_can_edit_trip(trip_id)`: an admin or the trip's owner.
 
 Two triggers hold what policies can't express: `travel_checklist_guard` lets a traveller change only `packed` on a packing item and `done` on a to-do, and `travel_trips_guard_owner` lets only admins change a trip's owner. `travel_people` has no write policies; it changes only through the `travel_*_person` functions, which check the caller.
+
+`supabase/tests/travel_access.sql` checks all of this as each kind of person (admin, member, travel-only user, traveller, revoked, never invited, another household). It builds its own households and users, and always ends by raising an exception that carries the result, so everything it did is rolled back. Run it after changing a policy, helper or trigger, and add a check for any new rule:
+
+```
+npx supabase db query --linked --project-ref bkehjssluczhindlyeme -f supabase/tests/travel_access.sql
+```
+
+The "error" it prints is the result, and should end in `0 failed` (`TRAVEL ACCESS TESTS (rolled back): 144 passed, 0 failed`); failed checks are listed by name after the counts. The flags are those of the Supabase CLI v2 this repo uses.
 
 ## Automations
 
