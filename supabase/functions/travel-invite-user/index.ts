@@ -5,8 +5,9 @@
 // may invite this person (an admin, or the owner of a trip the person is on), lets the email past the sign-up gate,
 // records the invite and returns the address. This function then has Supabase send the invite email, which needs the
 // service key.
-// Responds { status: 'invited' }, or { status: 'added' } when that email already has an account (they get access the
-// next time they open the app).
+// Responds { status: 'invited' }, or { status: 'added' } when that email already has an account. Supabase won't invite
+// an address that's already registered, so they're emailed a sign-in link instead; they get access when they next
+// open the app.
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -49,6 +50,27 @@ async function signedIn(req: Request): Promise<boolean> {
   return res.ok
 }
 
+type AuthError = { msg?: string; message?: string; error_code?: string } | null
+
+/** Has Supabase Auth email this address: the invite, or (`otp`) a sign-in link for an account that already exists. */
+function sendAuthEmail(kind: 'invite' | 'otp', email: string, redirect: string): Promise<Response> {
+  return fetch(`${SUPABASE_URL}/auth/v1/${kind}${redirect ? `?redirect_to=${encodeURIComponent(redirect)}` : ''}`, {
+    method: 'POST',
+    headers: { ...serviceHeaders(), 'Content-Type': 'application/json' },
+    // create_user: a sign-in link must never make an account, which would skip the invite.
+    body: JSON.stringify(kind === 'otp' ? { email, create_user: false } : { email }),
+  })
+}
+
+/** The response for an email Supabase Auth wouldn't send. The invite itself is recorded by now, so say so. */
+function emailNotSent(res: Response, err: AuthError) {
+  if (res.status === 429) {
+    return json({ error: 'The invite is saved, but too many emails were sent recently. Resend it later.' }, 429)
+  }
+  const why = err?.msg ?? err?.message ?? `error ${res.status}`
+  return json({ error: `The invite is saved, but the email couldn't be sent (${why}). Try Resend.` }, 502)
+}
+
 /** A refusal from travel_invite_person, worded for the person inviting. */
 class Refused extends Error {}
 
@@ -83,27 +105,18 @@ Deno.serve(async (req) => {
     const email = await recordInvite(req, personId)
 
     const redirect = /^https?:\/\//.test(redirectTo) ? redirectTo : ''
-    const url = `${SUPABASE_URL}/auth/v1/invite${redirect ? `?redirect_to=${encodeURIComponent(redirect)}` : ''}`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { ...serviceHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    })
-    if (!res.ok) {
-      const err = (await res.json().catch(() => null)) as { msg?: string; message?: string; error_code?: string } | null
-      const message = err?.msg ?? err?.message ?? ''
-      // They already have an account (the finance app, or an earlier invite): no email needed.
-      if (err?.error_code === 'email_exists' || /already been registered/i.test(message)) {
-        return json({ status: 'added' })
-      }
-      // The invite itself is recorded by now, so say so: sending again is all that's left.
-      if (res.status === 429) {
-        return json({ error: 'The invite is saved, but too many emails were sent recently. Resend it later.' }, 429)
-      }
-      const why = message || `error ${res.status}`
-      return json({ error: `The invite is saved, but the email couldn't be sent (${why}). Try Resend.` }, 502)
-    }
-    return json({ status: 'invited' })
+    const invite = await sendAuthEmail('invite', email, redirect)
+    if (invite.ok) return json({ status: 'invited' })
+
+    const err = (await invite.json().catch(() => null)) as AuthError
+    const registered = err?.error_code === 'email_exists' || /already been registered/i.test(err?.msg ?? err?.message ?? '')
+    if (!registered) return emailNotSent(invite, err)
+
+    // They already have an account (the finance app, or an earlier invite), which Supabase won't invite again.
+    // Email them a link that signs them in here instead.
+    const link = await sendAuthEmail('otp', email, redirect)
+    if (link.ok) return json({ status: 'added' })
+    return emailNotSent(link, (await link.json().catch(() => null)) as AuthError)
   } catch (e) {
     if (e instanceof Refused) return json({ error: e.message }, 400)
     return json({ error: e instanceof Error ? e.message : 'Invite failed' }, 500)

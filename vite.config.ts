@@ -32,6 +32,8 @@ export default defineConfig({
         // App files only. Supabase and Google are cross-origin and never cached here; trip data is kept by the
         // TanStack Query persister instead, so it is cleared with the rest of the session on sign-out.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // Only the invite and sign-in emails load this (supabase/templates), so devices needn't keep a copy.
+        globIgnores: ['**/email-logo.png'],
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
       },

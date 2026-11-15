@@ -35,6 +35,7 @@ This app lives in the **Team Lavine** Supabase project (`bkehjssluczhindlyeme`) 
   - `signup_allowlist` inserts, made by `travel_invite_person()` so an invited person can create an account. An existing row is left as it is.
 - **Owned by this app:** everything prefixed `travel_` (tables, the `travel_trip_summaries` view, functions, triggers, the `travel_status` / `travel_weather` cron jobs, the `travel_cron_token` Vault secret) and the `travel-places` / `travel-weather` / `travel-invite-user` edge functions.
 - **Applying migrations:** write a new file in `supabase/migrations/`, apply it with the Supabase MCP `apply_migration` tool (or paste it into the SQL editor), then rename the local file to the version Supabase assigned. **Never run `supabase db push` or `supabase db reset` against the remote project** — the migration history is shared with the finance repo and the CLI would try to reconcile it.
+- **Shared settings this app writes:** the project's invite and sign-in link email templates, which serve both apps. The copies in `supabase/templates/` here are the ones on the project (see "Emails" under Deploying). **Never run `supabase config push` from this repo's own `config.toml`**: it holds local-development values (Site URL, redirect URLs, MFA and more) that would overwrite the shared project's.
 - **Deploying functions:** `npx supabase functions deploy travel-places travel-weather travel-invite-user --project-ref bkehjssluczhindlyeme` (the `verify_jwt` settings come from `supabase/config.toml`).
 
 ## People and access
@@ -51,7 +52,7 @@ Everyone who can be put on a trip is a row in `travel_people` (a name, an option
 - A **trip's owner** (`travel_trips.owner_id`, the person who created it unless an admin reassigns it) and the admins manage the trip. Its **travellers** can see all of it, and can tick packing items and to-dos off, but change nothing else.
 - Invites sent from this app are **travel-only**: the person gets an account and a `travel_people` row, not a `household_members` row, so they see nothing in the finance app. Full household membership is still granted from the finance app, and only household members can be made admins.
 - Admins invite from **Settings → Household → People**. A trip's owner can add a person (always a regular user) from the trip's Travellers panel and send their invite there.
-- Inviting is two steps in `travel-invite-user`: `travel_invite_person()` runs as the caller, checks they may invite that person, and records the invite and the sign-up allowlist row; then the function sends the Supabase invite email with the service role. A person who already has an account is given access straight away.
+- Inviting is two steps in `travel-invite-user`: `travel_invite_person()` runs as the caller, checks they may invite that person, and records the invite and the sign-up allowlist row; then the function sends the Supabase invite email with the service role. A person who already has an account can't be invited again by Supabase, so they are emailed a sign-in link instead (the project's Magic Link template) and get access when they next open the app.
 - On sign-in the app calls `travel_sync_me()`, which accepts any pending finance invites and links the account to the `travel_people` rows carrying its confirmed email, and then `travel_my_households()` for the households it can use and its role in each.
 
 Every travel table carries `household_id` (copied from the parent trip by trigger) and has RLS enabled. Policies are built on three helpers rather than on `is_household_member()`:
@@ -82,6 +83,8 @@ The "error" it prints is the result, and should end in `0 failed` (`TRAVEL ACCES
 3. **Google Places:** in Google Cloud, enable **Places API (New)**, create an API key restricted to that API, and set it as an edge function secret:
    `npx supabase secrets set GOOGLE_PLACES_API_KEY=... --project-ref bkehjssluczhindlyeme`.
    Until then, lodging and transport are entered by hand and destinations are geocoded through Open-Meteo.
-4. **Invite email (optional):** the project's invite template is shared with finance. If it mentions "Finances", change the subject and body to something neutral such as "You're invited to Team Lavine".
+4. **Emails:** `supabase/templates/invite.html` and `magic_link.html` are the invite and sign-in link emails (the second is also what an invited person who already has an account receives). The project shares both with finance, so each one shows Travel or Finances depending on the `redirectTo` its link was requested with: this app's origin means Travel, anything else Finances. The logo comes from that site's `/email-logo.png`, so this app must be deployed before its logo shows. To change them, edit the files and push only those two templates:
+   - Make an empty folder with a `supabase/` directory holding a copy of `templates/` and a `config.toml` that contains nothing but `project_id` and the two `[auth.email.template.*]` sections from this repo's `config.toml`.
+   - Run `npx supabase config push --project-ref bkehjssluczhindlyeme --workdir <that folder>`. Answer yes only if it lists just the template subjects and contents, and no to anything else.
 
 Sign-in sessions are stored per site, so users sign in once on each of the finance and travel subdomains with the same account.

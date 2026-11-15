@@ -398,7 +398,7 @@ export function useUpdatePerson() {
 
 /**
  * Emails a person their invite, or sends it again. Resolves to 'added' when that email already has an account, in
- * which case nothing is sent and they get access the next time they open the app.
+ * which case they're sent a sign-in link instead and get access the next time they open the app.
  */
 export function useInvitePerson() {
   const invalidate = useInvalidatePeople()
