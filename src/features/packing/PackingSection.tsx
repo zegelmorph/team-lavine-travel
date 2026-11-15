@@ -426,7 +426,6 @@ function CabinetChecklist({ trip, catalog, categories }: { trip: TripBundle; cat
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-slate-500">Check what you're taking and it goes on the list.</p>
       {groupByCategory(shown, categories).map((g) => (
         <div key={g.category?.id ?? 'other'}>
           <h5 className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{g.category?.name ?? 'Other'}</h5>
@@ -585,7 +584,6 @@ function EditPackDialog({ trip, item, onClose }: { trip: TripBundle; item: PackI
           <div>
             <Label htmlFor="pack-rename">Name</Label>
             <Input id="pack-rename" autoFocus required value={name} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.target.select()} />
-            {item.catalog_item_id && <p className="mt-1.5 text-xs text-slate-500">Only changes the name on this trip's list.</p>}
           </div>
           {trip.events.length > 0 && (
             <fieldset>

@@ -42,27 +42,24 @@ function OwnerPanel({ trip }: { trip: TripBundle }) {
       <CardSubheader title="Owner" />
       <div className="px-5 pb-4 pt-1 max-md:px-4">
         {household.role === 'admin' ? (
-          <>
-            <Select
-              aria-label="Trip owner"
-              value={trip.owner_id ?? ''}
-              disabled={!online || update.isPending}
-              onChange={(e) => update.mutate({ owner_id: e.target.value || null }, { onError: (err) => toast.error(err.message) })}
-              className="w-full"
-            >
-              <option value="">No owner</option>
-              {/* The current owner when they aren't a candidate: the people list is still loading, or they lost access. */}
-              {trip.owner_id && !candidates.some((p) => p.user_id === trip.owner_id) && (
-                <option value={trip.owner_id}>{owner ? `${owner.name} (no access)` : '...'}</option>
-              )}
-              {candidates.map((p) => (
-                <option key={p.id} value={p.user_id!}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-            <p className="mt-1.5 text-xs text-slate-500">The owner manages this trip. Admins can manage every trip.</p>
-          </>
+          <Select
+            aria-label="Trip owner"
+            value={trip.owner_id ?? ''}
+            disabled={!online || update.isPending}
+            onChange={(e) => update.mutate({ owner_id: e.target.value || null }, { onError: (err) => toast.error(err.message) })}
+            className="w-full"
+          >
+            <option value="">No owner</option>
+            {/* The current owner when they aren't a candidate: the people list is still loading, or they lost access. */}
+            {trip.owner_id && !candidates.some((p) => p.user_id === trip.owner_id) && (
+              <option value={trip.owner_id}>{owner ? `${owner.name} (no access)` : '...'}</option>
+            )}
+            {candidates.map((p) => (
+              <option key={p.id} value={p.user_id!}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
         ) : (
           <p className="text-slate-600">{owner ? owner.name : 'Managed by the admins'}</p>
         )}

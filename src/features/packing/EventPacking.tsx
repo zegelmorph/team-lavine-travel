@@ -81,20 +81,17 @@ export function EventPacking({ trip, event }: { trip: TripBundle; event: TripEve
   return (
     <div className="space-y-4">
       {online && canEdit && (
-        <div>
-          <Combobox
-            options={options}
-            value={null}
-            onChange={pick}
-            onCreate={create}
-            placeholder="Add something to take to this event"
-            openOnFocus
-            preferCreate
-            stayOnPick
-            commitOnLeave={false}
-          />
-          <p className="mt-1.5 text-xs text-slate-500">Pick from your packing list or saved items, or type a new item to put on the list.</p>
-        </div>
+        <Combobox
+          options={options}
+          value={null}
+          onChange={pick}
+          onCreate={create}
+          placeholder="Add something to take to this event"
+          openOnFocus
+          preferCreate
+          stayOnPick
+          commitOnLeave={false}
+        />
       )}
       {items.length === 0 ? (
         <p className="py-6 text-center text-slate-500">Nothing to take to this event yet.</p>
@@ -134,7 +131,6 @@ export function EventPacking({ trip, event }: { trip: TripBundle; event: TripEve
               </li>
             ))}
           </ul>
-          {online && canEdit && <p className="text-xs text-slate-500">Taking an item off an event keeps it on the packing list.</p>}
         </>
       )}
     </div>
