@@ -6,23 +6,28 @@ import type { Participant, Person } from '@/lib/types'
 import { CardSubheader } from '@/components/ui/card'
 import { Combobox, type ComboOption } from '@/components/ui/combobox'
 import { useOnline } from '@/lib/useOnline'
+import { useHousehold } from '@/features/auth/HouseholdProvider'
+import { InviteEmailDialog } from '@/features/people/InviteEmailDialog'
 import { PersonDialog } from '@/features/people/PersonDialog'
 import { useSendInvite } from '@/features/people/useSendInvite'
 import { useCanEdit } from '../access'
 
 /**
  * Who's going, one row per traveller. Travellers are picked from the household's people; typing a new name saves that
- * person first. Whoever manages the trip can also invite a traveller who has an email but can't sign in yet, from
- * that traveller's row; signing in lets them see this trip.
+ * person first. Whoever manages the trip can also invite a traveller who can't sign in yet, from that traveller's
+ * row; signing in lets them see this trip. A traveller saved without an email is asked for one first, which only an
+ * admin can do, since only admins may change someone else's details.
  */
 export function TravelersPanel({ trip }: { trip: TripBundle }) {
   const canEdit = useCanEdit()
   const online = useOnline()
+  const isAdmin = useHousehold().household.role === 'admin'
   const { data: people = [] } = usePeople()
   const save = useSaveTripRow<Participant>('travel_participants', trip.id)
   const remove = useDeleteTripRow('travel_participants', trip.id)
   const { send, sendingTo } = useSendInvite()
   const [addingName, setAddingName] = useState<string | null>(null)
+  const [askingEmailOf, setAskingEmailOf] = useState<Person | null>(null)
 
   const onTrip = useMemo(() => new Set(trip.participants.map((p) => p.person_id)), [trip.participants])
   const options: ComboOption[] = useMemo(
@@ -54,8 +59,10 @@ export function TravelersPanel({ trip }: { trip: TripBundle }) {
           <ul className="@container space-y-1.5">
             {trip.participants.map((p) => {
               const person = peopleById.get(p.person_id)
-              // Someone with an email who can't sign in yet can be sent an invite, or sent it again.
-              const invitable = canEdit && person?.email && (person.access === 'none' || person.access === 'invited')
+              // Someone who can't sign in yet can be sent an invite, or sent it again. Without an email they're asked
+              // for one first, which takes an admin.
+              const invitable =
+                canEdit && person && (person.access === 'none' || person.access === 'invited') && (person.email || isAdmin)
               return (
                 <li key={p.id} className="flex items-center gap-1.5 rounded-full bg-brand-50 py-1 pl-1 pr-2 text-sm text-brand-800">
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[11px] font-semibold uppercase">
@@ -64,7 +71,13 @@ export function TravelersPanel({ trip }: { trip: TripBundle }) {
                   <span className="min-w-0 flex-1 truncate" title={p.person.name}>
                     {p.person.name}
                   </span>
-                  {invitable && <InviteButton person={person} disabled={!online || sendingTo === person.id} onSend={() => send(person)} />}
+                  {invitable && (
+                    <InviteButton
+                      person={person}
+                      disabled={!online || sendingTo === person.id}
+                      onSend={() => (person.email ? send(person) : setAskingEmailOf(person))}
+                    />
+                  )}
                   {canEdit && online && (
                     <button
                       type="button"
@@ -95,6 +108,7 @@ export function TravelersPanel({ trip }: { trip: TripBundle }) {
         )}
       </div>
       {addingName !== null && <PersonDialog initialName={addingName} onClose={() => setAddingName(null)} onAdded={add} />}
+      {askingEmailOf && <InviteEmailDialog person={askingEmailOf} onClose={() => setAskingEmailOf(null)} onInvite={send} />}
     </section>
   )
 }
@@ -102,7 +116,8 @@ export function TravelersPanel({ trip }: { trip: TripBundle }) {
 /**
  * Sits inside a traveller's chip. Its presence is the cue that they can't see the trip yet; the tooltip spells it out.
  * When the list is narrow the label is dropped and only the icon shows, so the name keeps its room. On touch layouts
- * the pill stays the same size and an invisible ::after makes the tap target taller.
+ * the pill stays the same size and an invisible ::after makes the tap target taller. For someone with no email saved,
+ * `onSend` asks for one before anything is sent.
  */
 function InviteButton({ person, disabled, onSend }: { person: Person; disabled: boolean; onSend: () => void }) {
   const invited = person.access === 'invited'
@@ -114,7 +129,9 @@ function InviteButton({ person, disabled, onSend }: { person: Person; disabled: 
       title={
         invited
           ? `${person.name} hasn't signed in yet. Send the invite email again.`
-          : `${person.name} can't see this trip yet. Email them a link to sign in.`
+          : person.email
+            ? `${person.name} can't see this trip yet. Email them a link to sign in.`
+            : `${person.name} can't see this trip yet. Add their email to invite them.`
       }
       aria-label={invited ? `Resend invite to ${person.name}` : `Invite ${person.name}`}
       className="relative flex h-6 shrink-0 items-center gap-1 rounded-full bg-brand-100 px-2 text-xs font-medium text-brand-800 transition-colors enabled:hover:bg-brand-fill enabled:hover:text-on-brand disabled:opacity-50 max-md:px-2.5 max-md:after:absolute max-md:after:inset-x-0 max-md:after:-inset-y-1.5"
