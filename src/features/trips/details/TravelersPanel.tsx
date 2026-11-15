@@ -74,23 +74,20 @@ export function TravelersPanel({ trip }: { trip: TripBundle }) {
           </ul>
         )}
         {canEdit && online && (
-          <div>
-            <Combobox
-              options={options}
-              value={null}
-              onChange={(id) => id && add(id)}
-              onCreate={addByName}
-              placeholder="Add someone"
-              openOnFocus
-              preferCreate
-              stayOnPick
-              commitOnLeave={false}
-            />
-            <p className="mt-1.5 text-xs text-slate-500">Pick someone, or type a new name to add them.</p>
-          </div>
+          <Combobox
+            options={options}
+            value={null}
+            onChange={(id) => id && add(id)}
+            onCreate={addByName}
+            placeholder="Add someone"
+            openOnFocus
+            preferCreate
+            stayOnPick
+            commitOnLeave={false}
+          />
         )}
         {canEdit && toInvite.length > 0 && (
-          <ul className="space-y-1 border-t border-slate-100 pt-3">
+          <ul className="space-y-2 border-t border-slate-100 pt-3">
             {toInvite.map((p) => (
               <InviteRow key={p.id} person={p} sending={sendingTo === p.id} onSend={() => send(p)} />
             ))}
@@ -102,14 +99,15 @@ export function TravelersPanel({ trip }: { trip: TripBundle }) {
   )
 }
 
+/** The message is never cut off: when it and the button don't fit side by side, the button drops below it. */
 function InviteRow({ person, sending, onSend }: { person: Person; sending: boolean; onSend: () => void }) {
   const invited = person.access === 'invited'
   return (
-    <li className="flex items-center justify-between gap-2 text-xs text-slate-500">
-      <span className="min-w-0 truncate">
+    <li className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+      <span className="min-w-0 break-words">
         {invited ? `${person.name} hasn't signed in yet.` : `${person.name} can't see this trip yet.`}
       </span>
-      <Button variant="ghost" size="sm" needsOnline disabled={sending} onClick={onSend} className="shrink-0">
+      <Button variant="ghost" size="sm" needsOnline disabled={sending} onClick={onSend} className="ml-auto shrink-0">
         <Send className="h-3.5 w-3.5" /> {invited ? 'Resend invite' : 'Send invite'}
       </Button>
     </li>
