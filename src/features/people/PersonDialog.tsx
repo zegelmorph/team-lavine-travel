@@ -104,7 +104,7 @@ export function PersonDialog({
                 ? 'The address they sign in with.'
                 : person?.access === 'invited'
                   ? 'Changing the address cancels the invite sent to the old one.'
-                  : 'Needed to invite them to sign in. Nothing is sent until you choose Send invite.'}
+                  : 'Needed to invite them to sign in. Nothing is sent until you invite them.'}
             </p>
           </div>
           {person?.is_member && !isMe && (
