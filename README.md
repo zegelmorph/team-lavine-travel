@@ -68,7 +68,7 @@ Two triggers hold what policies can't express: `travel_checklist_guard` lets a t
 npx supabase db query --linked --project-ref bkehjssluczhindlyeme -f supabase/tests/travel_access.sql
 ```
 
-The "error" it prints is the result, and should end in `0 failed` (`TRAVEL ACCESS TESTS (rolled back): 144 passed, 0 failed`); failed checks are listed by name after the counts. The flags are those of the Supabase CLI v2 this repo uses.
+The "error" it prints is the result, and should end in `0 failed` (`TRAVEL ACCESS TESTS (rolled back): 153 passed, 0 failed`); failed checks are listed by name after the counts. The flags are those of the Supabase CLI v2 this repo uses.
 
 ## Automations
 

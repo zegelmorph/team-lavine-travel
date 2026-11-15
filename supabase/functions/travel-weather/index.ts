@@ -26,6 +26,8 @@ const TYPICAL_YEARS = 3
 const MAX_DAYS = 60
 const RECENT_PAST_DAYS = 60
 const STALE_MS = 3 * 60 * 60 * 1000
+const FETCH_TIMEOUT_MS = 10_000
+const SLOW_FAILURE_MS = 5_000
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
@@ -97,11 +99,33 @@ function eachDay(start: string, end: string): string[] {
   return days
 }
 
-async function openMeteo(url: string): Promise<{ timezone?: string; daily?: Daily }> {
-  const res = await fetch(url)
-  const body = await res.json().catch(() => null)
-  if (!res.ok) throw new Error(body?.reason ?? `Open-Meteo request failed (${res.status})`)
-  return body
+// Open-Meteo's hosts fail independently, and a stalled connection would otherwise hold the request until the platform
+// kills it, so each call is cut off after FETCH_TIMEOUT_MS. A host whose call failed slowly (timed out, stalled
+// mid-response, or was reset after a long wait) is added to `down`, and the rest of the invocation skips it instead of
+// waiting again for every destination. Quick failures are cheap to retry and only fail the destination at hand.
+async function openMeteo(url: string, down: Set<string>): Promise<{ timezone?: string; daily?: Daily }> {
+  const host = new URL(url).host
+  if (down.has(host)) throw new Error(`${host} is not responding`)
+  const started = Date.now()
+  let res: Response | null = null
+  let body: { reason?: string; timezone?: string; daily?: Daily } | null = null
+  let failure = ''
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+    body = await res.json()
+  } catch (e) {
+    failure = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+  }
+  if (res?.ok && body) return body
+  if (failure) {
+    const elapsed = Date.now() - started
+    if (elapsed >= SLOW_FAILURE_MS) down.add(host)
+    console.error(`${host} failed after ${Math.round(elapsed / 1000)}s (${failure})`)
+    if (down.has(host)) throw new Error(`${host} is not responding`)
+    if (!res) throw new Error(`${host} could not be reached`)
+    // Otherwise a reply arrived quickly but wasn't JSON; report it by status below.
+  }
+  throw new Error(body?.reason ?? `Open-Meteo ${body ? 'request failed' : 'sent an unreadable response'} (${res?.status})`)
 }
 
 const round1 = (n: number | null | undefined) => (n == null ? null : Math.round(n * 10) / 10)
@@ -113,7 +137,7 @@ function mode(values: number[]): number | null {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]
 }
 
-async function weatherFor(d: Destination): Promise<{ timezone: string | null; rows: WeatherRow[] }> {
+async function weatherFor(d: Destination, down: Set<string>): Promise<{ timezone: string | null; rows: WeatherRow[] }> {
   const fetchedAt = new Date().toISOString()
   const today = todayIn(d.timezone)
   const lastForecast = addDays(today, FORECAST_DAYS - 1)
@@ -126,13 +150,17 @@ async function weatherFor(d: Destination): Promise<{ timezone: string | null; ro
   const typicalDays = days.filter((x) => x > lastForecast)
   const loc = `latitude=${d.lat}&longitude=${d.lng}&timezone=auto`
   const rows: WeatherRow[] = []
+  // Every Open-Meteo response names the location's time zone (timezone=auto); the first call made supplies it.
+  let timezone: string | undefined
 
   if (pastDays.length) {
     const archive = await openMeteo(
       `https://archive-api.open-meteo.com/v1/archive?${loc}` +
         `&start_date=${pastDays[0]}&end_date=${pastDays[pastDays.length - 1]}` +
         '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum',
+      down,
     )
+    timezone ??= archive.timezone
     const a = archive.daily
     a?.time.forEach((date, i) => {
       rows.push({
@@ -149,17 +177,18 @@ async function weatherFor(d: Destination): Promise<{ timezone: string | null; ro
     })
   }
 
-  // Always called, even with no forecast days, because it also resolves the time zone.
-  const range = forecastDays.length
-    ? `start_date=${forecastDays[0]}&end_date=${forecastDays[forecastDays.length - 1]}`
-    : 'forecast_days=1'
-  const forecast = await openMeteo(
-    `https://api.open-meteo.com/v1/forecast?${loc}&${range}` +
-      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum',
-  )
-  if (forecastDays.length && forecast.daily) {
+  // Skipped when no day needs it, so a destination whose days are all far off (or all long past) doesn't depend on the
+  // forecast host.
+  if (forecastDays.length) {
+    const forecast = await openMeteo(
+      `https://api.open-meteo.com/v1/forecast?${loc}` +
+        `&start_date=${forecastDays[0]}&end_date=${forecastDays[forecastDays.length - 1]}` +
+        '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum',
+      down,
+    )
+    timezone ??= forecast.timezone
     const f = forecast.daily
-    f.time.forEach((date, i) => {
+    f?.time.forEach((date, i) => {
       if (!forecastDays.includes(date)) return
       rows.push({
         destination_id: d.id,
@@ -187,7 +216,9 @@ async function weatherFor(d: Destination): Promise<{ timezone: string | null; ro
         `https://archive-api.open-meteo.com/v1/archive?${loc}` +
           `&start_date=${shiftYears(first, -back)}&end_date=${shiftYears(last, -back)}` +
           '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum',
+        down,
       )
+      timezone ??= archive.timezone
       const a = archive.daily
       a?.time.forEach((date, i) => {
         const key = date.slice(5)
@@ -219,16 +250,17 @@ async function weatherFor(d: Destination): Promise<{ timezone: string | null; ro
     }
   }
 
-  return { timezone: forecast.timezone ?? d.timezone, rows }
+  return { timezone: timezone ?? d.timezone, rows }
 }
 
 async function refresh(db: SupabaseClient, destinations: Destination[]) {
   let refreshed = 0
   const errors: string[] = []
+  const down = new Set<string>()
   for (const d of destinations) {
     if (d.lat == null || d.lng == null || !d.start_date || !d.end_date) continue
     try {
-      const { timezone, rows } = await weatherFor(d)
+      const { timezone, rows } = await weatherFor(d, down)
       if (rows.length) {
         const { error } = await db.from('travel_weather').upsert(rows, { onConflict: 'destination_id,date' })
         if (error) throw error

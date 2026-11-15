@@ -6,7 +6,7 @@
 --   npx supabase db query --linked --project-ref bkehjssluczhindlyeme -f supabase/tests/travel_access.sql
 -- (or with the Supabase MCP execute_sql tool, or in the SQL editor). It builds its own households and users and
 -- always ends by raising, so nothing it does is kept. The "error" it ends with is the result:
---   TRAVEL ACCESS TESTS (rolled back): 144 passed, 0 failed
+--   TRAVEL ACCESS TESTS (rolled back): 153 passed, 0 failed
 -- followed by one line for each check that failed.
 --
 -- This isn't a pgTAP test: `supabase test db` (which runs against a local database this repo doesn't use) would
@@ -40,6 +40,8 @@ declare
   todo_admin uuid;
   todo_member uuid;
   todo_trav uuid;
+  c_item uuid;
+  c_cat uuid;
   v_passed int;
   v_failed int;
   v_failures text;
@@ -374,6 +376,33 @@ begin
     'select count(*) from public.household_members', '0');
   perform pg_temp.t('travel-only users see no households table rows', u_trav,
     'select count(*) from public.households', '0');
+
+  -- The saved items and categories are shared. Deleting one clears the link on every trip's items, including trips
+  -- the person deleting it doesn't manage; clearing the link by hand is still an edit.
+  perform pg_temp.t('owner saves an item', u_member,
+    format('insert into public.travel_pack_catalog (household_id, name) values (%L, %L)', hh, 'Test saved socks'), '1');
+  perform pg_temp.t('and a category', u_member,
+    format('insert into public.travel_pack_categories (household_id, name) values (%L, %L)', hh, 'Test drawer'), '1');
+  select id into c_item from public.travel_pack_catalog where household_id = hh and name = 'Test saved socks';
+  select id into c_cat from public.travel_pack_categories where household_id = hh and name = 'Test drawer';
+  perform pg_temp.t('and links their packing item to both', u_member,
+    format('update public.travel_pack_items set catalog_item_id = %L, category_id = %L where id = %L', c_item, c_cat, i_member),
+    '1');
+  perform pg_temp.t('traveller can''t unlink the saved item', u_trav,
+    format('update public.travel_pack_items set catalog_item_id = null where id = %L', i_member),
+    'ERROR: Only the trip''s owner%');
+  perform pg_temp.t('nor take it out of its category', u_trav,
+    format('update public.travel_pack_items set category_id = null where id = %L', i_member),
+    'ERROR: Only the trip''s owner%');
+  perform pg_temp.t('traveller deletes the saved item', u_trav,
+    format('delete from public.travel_pack_catalog where id = %L', c_item), '1');
+  perform pg_temp.t('the trip keeps its packing item, unlinked', u_member,
+    format('select count(*) from public.travel_pack_items where id = %L and catalog_item_id is null and category_id = %L', i_member, c_cat),
+    '1');
+  perform pg_temp.t('someone who isn''t on the trip deletes the category', u_out,
+    format('delete from public.travel_pack_categories where id = %L', c_cat), '1');
+  perform pg_temp.t('the packing item is left without a category', u_member,
+    format('select count(*) from public.travel_pack_items where id = %L and category_id is null', i_member), '1');
 
   -- Moving a row is a write to the trip it lands in.
   perform pg_temp.t('a to-do can''t be moved into a trip they only view', u_trav,
