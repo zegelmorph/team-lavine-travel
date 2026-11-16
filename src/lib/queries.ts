@@ -81,7 +81,7 @@ function tripQuery(tripId: string) {
           .from('travel_trips')
           .select(
             '*, destinations:travel_destinations(*), ' +
-              'participants:travel_participants(*, person:travel_people!travel_participants_person_fkey(name)), ' +
+              'participants:travel_participants(*, person:travel_people!travel_participants_person_fkey(name, user_id)), ' +
               'transport:travel_transport(*), lodging:travel_lodging(*), events:travel_events(*), ' +
               'packItems:travel_pack_items(*), packItemEvents:travel_pack_item_events(*), todos:travel_todos(*)',
           )

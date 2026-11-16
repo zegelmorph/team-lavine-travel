@@ -1,12 +1,13 @@
 -- Who can see and change what in the travel tables, checked by impersonating each kind of user: an admin, a
--- household member who owns a trip, a travel-only traveller, an invited user who isn't on any trip, someone whose
--- access was removed, someone from another household, and a visitor who isn't signed in.
+-- household member who owns a trip, a travel-only traveller (as a viewer and as an editor of that trip), an invited
+-- user who isn't on any trip, someone whose access was removed, someone from another household, and a visitor who
+-- isn't signed in.
 --
 -- Run the whole file after any change to the travel policies, triggers or functions:
 --   npx supabase db query --linked --project-ref bkehjssluczhindlyeme -f supabase/tests/travel_access.sql
 -- (or with the Supabase MCP execute_sql tool, or in the SQL editor). It builds its own households and users and
 -- always ends by raising, so nothing it does is kept. The "error" it ends with is the result:
---   TRAVEL ACCESS TESTS (rolled back): 153 passed, 0 failed
+--   TRAVEL ACCESS TESTS (rolled back): 197 passed, 0 failed
 -- followed by one line for each check that failed.
 --
 -- This isn't a pgTAP test: `supabase test db` (which runs against a local database this repo doesn't use) would
@@ -424,6 +425,99 @@ begin
     format('update public.travel_todos set trip_id = %L where id = %L', t_member, todo_admin), '1');
 
   -- -------------------------------------------------------------------------------------------------------------
+  -- Trip roles: an editor changes what's on the trip, but not who is on it, who owns it, or whether it exists
+  -- -------------------------------------------------------------------------------------------------------------
+
+  perform pg_temp.t('a traveller starts as a viewer', u_member,
+    format('select role from public.travel_participants where trip_id = %L and person_id = %L', t_member, p_trav), 'viewer');
+  perform pg_temp.t('the trips list tells a viewer their role', u_trav,
+    format('select my_role from public.travel_trip_summaries where id = %L', t_member), 'viewer');
+  perform pg_temp.t('and has none for someone who isn''t travelling', u_member,
+    format('select my_role from public.travel_trip_summaries where id = %L', t_member), 'null');
+  perform pg_temp.t('a viewer can''t make themselves an editor', u_trav,
+    format('update public.travel_participants set role = %L where trip_id = %L', 'editor', t_member), '0');
+  perform pg_temp.t('another household can''t set roles here', u_other,
+    format('update public.travel_participants set role = %L where trip_id = %L', 'editor', t_member), '0');
+  perform pg_temp.t('a role is viewer or editor, nothing else', u_member,
+    format('update public.travel_participants set role = %L where trip_id = %L and person_id = %L', 'owner', t_member, p_trav),
+    'ERROR:%check constraint%');
+  perform pg_temp.t('owner makes a traveller an editor', u_member,
+    format('update public.travel_participants set role = %L where trip_id = %L and person_id = %L', 'editor', t_member, p_trav),
+    '1');
+  perform pg_temp.t('the trips list tells an editor their role', u_trav,
+    format('select my_role from public.travel_trip_summaries where id = %L', t_member), 'editor');
+
+  perform pg_temp.t('editor changes the trip''s name and notes', u_trav,
+    format('update public.travel_trips set name = %L, notes = %L where id = %L', 'Member trip', 'Edited by an editor', t_member),
+    '1');
+  perform pg_temp.t('editor adds a destination', u_trav,
+    format('insert into public.travel_destinations (trip_id, name) values (%L, %L)', t_member, 'Editor City'), '1');
+  perform pg_temp.t('editor changes a destination', u_trav,
+    format('update public.travel_destinations set name = %L where id = %L', 'Test Town', d_member), '1');
+  perform pg_temp.t('editor deletes a destination', u_trav,
+    format('delete from public.travel_destinations where trip_id = %L and name = %L', t_member, 'Editor City'), '1');
+  perform pg_temp.t('editor adds a to-do', u_trav,
+    format('insert into public.travel_todos (trip_id, title) values (%L, %L)', t_member, 'Editor to-do'), '1');
+  perform pg_temp.t('editor rewords a to-do', u_trav,
+    format('update public.travel_todos set title = %L where id = %L', 'Reworded', todo_member), '1');
+  perform pg_temp.t('editor deletes a to-do', u_trav,
+    format('delete from public.travel_todos where trip_id = %L and title = %L', t_member, 'Editor to-do'), '1');
+  perform pg_temp.t('editor changes a packing item''s quantity', u_trav,
+    format('update public.travel_pack_items set quantity = 5 where id = %L', i_member), '1');
+  perform pg_temp.t('editor moves a to-do of their own into the trip', u_trav,
+    format('update public.travel_todos set trip_id = %L where id = %L', t_member, todo_trav), '1');
+  perform pg_temp.t('and back out again', u_trav,
+    format('update public.travel_todos set trip_id = %L where id = %L', t_trav, todo_trav), '1');
+  perform pg_temp.t('editor writes weather for a destination', u_trav,
+    format('insert into public.travel_weather (destination_id, date, source) values (%L, %L, %L)', d_member, '2030-01-01', 'forecast'),
+    '1');
+  perform pg_temp.t('editing one trip doesn''t open another', u_trav,
+    format('insert into public.travel_todos (trip_id, title) values (%L, %L)', t_admin, 'Sneaky'),
+    'ERROR: new row violates row-level security%');
+
+  perform pg_temp.t('editor can''t add a traveller', u_trav,
+    format('insert into public.travel_participants (trip_id, person_id) values (%L, %L)', t_member, p_kid),
+    'ERROR: new row violates row-level security%');
+  -- Moving a traveller's row is checked apart from adding one, so it gets its own check.
+  perform pg_temp.t('editor adds a traveller to a trip of their own', u_trav,
+    format('insert into public.travel_participants (trip_id, person_id) values (%L, %L)', t_trav, p_kid), '1');
+  perform pg_temp.t('but can''t move them onto the trip they edit', u_trav,
+    format('update public.travel_participants set trip_id = %L where trip_id = %L', t_member, t_trav),
+    'ERROR: new row violates row-level security%');
+  perform pg_temp.t('and takes them off their own trip again', u_trav,
+    format('delete from public.travel_participants where trip_id = %L', t_trav), '1');
+  perform pg_temp.t('editor can''t take people off the trip', u_trav,
+    format('delete from public.travel_participants where trip_id = %L', t_member), '0');
+  perform pg_temp.t('editor can''t change roles', u_trav,
+    format('update public.travel_participants set role = %L where trip_id = %L', 'viewer', t_member), '0');
+  perform pg_temp.t('editor can''t delete the trip', u_trav,
+    format('delete from public.travel_trips where id = %L', t_member), '0');
+  perform pg_temp.t('editor can''t take the trip over', u_trav,
+    format('update public.travel_trips set owner_id = %L where id = %L', u_trav, t_member), 'ERROR: Only an admin%');
+  perform pg_temp.t('owner adds a second traveller', u_member,
+    format('insert into public.travel_participants (trip_id, person_id) values (%L, %L)', t_member, p_new), '1');
+  perform pg_temp.t('editor can''t invite them', u_trav,
+    format('select public.travel_invite_person(%L)', p_new), 'ERROR: Only an admin%');
+  perform pg_temp.t('owner takes them off again', u_member,
+    format('delete from public.travel_participants where trip_id = %L and person_id = %L', t_member, p_new), '1');
+
+  perform pg_temp.t('admin sets a role on a trip that isn''t theirs', u_admin,
+    format('update public.travel_participants set role = %L where trip_id = %L and person_id = %L', 'viewer', t_member, p_trav),
+    '1');
+  perform pg_temp.t('a viewer again, they can''t add a to-do', u_trav,
+    format('insert into public.travel_todos (trip_id, title) values (%L, %L)', t_member, 'Mine'),
+    'ERROR: new row violates row-level security%');
+  perform pg_temp.t('nor rename the trip', u_trav,
+    format('update public.travel_trips set name = %L where id = %L', 'Hijacked', t_member), '0');
+  perform pg_temp.t('nor write weather', u_trav,
+    format('insert into public.travel_weather (destination_id, date, source) values (%L, %L, %L)', d_member, '2030-01-02', 'forecast'),
+    'ERROR: new row violates row-level security%');
+  perform pg_temp.t('but still see it', u_trav,
+    format('select count(*) from public.travel_weather where destination_id = %L', d_member), '1');
+  perform pg_temp.t('and tick things off', u_trav,
+    format('update public.travel_todos set done = true where id = %L', todo_member), '1');
+
+  -- -------------------------------------------------------------------------------------------------------------
   -- Who owns a trip
   -- -------------------------------------------------------------------------------------------------------------
 
@@ -504,16 +598,25 @@ begin
   perform pg_temp.t('then they can be deleted', u_admin,
     format('select public.travel_delete_person(%L)', p_rev), '!ERROR%');
 
-  -- Removing a traveller's access: they stay on the trip as a name, and their own trip is left to the admins.
+  -- Removing a traveller's access: they stay on the trip as a name, and their own trip is left to the admins. Their
+  -- role on the trip does nothing meanwhile, but it is kept, and is what they get if they are invited back.
+  perform pg_temp.t('the traveller is an editor when their access goes', u_admin,
+    format('update public.travel_participants set role = %L where trip_id = %L and person_id = %L', 'editor', t_member, p_trav),
+    '1');
   perform pg_temp.t('admin removes the traveller''s access', u_admin,
     format('select public.travel_revoke_person(%L)', p_trav), '!ERROR%');
   perform pg_temp.t('who then sees no trips', u_trav, 'select count(*) from public.travel_trips', '0');
   perform pg_temp.t('and can''t tick anything', u_trav,
     format('update public.travel_pack_items set packed = false where id = %L', i_member), '0');
+  perform pg_temp.t('or edit anything, editor or not', u_trav,
+    format('insert into public.travel_todos (trip_id, title) values (%L, %L)', t_member, 'Still here'),
+    'ERROR: new row violates row-level security%');
   perform pg_temp.travel_test_check('their own trip has no owner',
     (select (owner_id is null)::text from public.travel_trips where id = t_trav), 'true');
   perform pg_temp.travel_test_check('and they are still listed on the trip they were on',
     (select count(*)::text from public.travel_participants where trip_id = t_member and person_id = p_trav), '1');
+  perform pg_temp.travel_test_check('with the role they had',
+    (select role from public.travel_participants where trip_id = t_member and person_id = p_trav), 'editor');
 
   -- A deleted account: the person stays as a name, and a new account under that email isn't let back in.
   delete from auth.users where id = u_out;
@@ -521,18 +624,29 @@ begin
     (select (user_id is null and invited_at is null)::text from public.travel_people where id = p_out), 'true');
 
   -- Someone removed from the household (in the finance app) keeps their account but has no access, until invited.
+  -- Unlike the two cases above their person stays linked to the account, so this is where being an editor has to
+  -- depend on still having access.
+  perform pg_temp.t('admin puts a member on a trip as an editor', u_admin,
+    format('insert into public.travel_participants (trip_id, person_id, role) values (%L, %L, %L)', t_admin, p_member, 'editor'),
+    '1');
+  perform pg_temp.t('who can then edit it', u_member,
+    format('select public.travel_can_edit_trip(%L)', t_admin), 'true');
   delete from public.household_members where household_id = hh and user_id = u_member;
   update public.travel_people set email = null where id = p_member;
   perform pg_temp.t('a former member has no access', u_member,
     format('select count(*) from public.travel_my_households() where id = %L', hh), '0');
   perform pg_temp.t('and no trips, though they still own one', u_member, 'select count(*) from public.travel_trips', '0');
+  perform pg_temp.t('and can''t edit the trip they were an editor of', u_member,
+    format('select public.travel_can_edit_trip(%L)', t_admin), 'false');
   perform pg_temp.t('list: former member', u_admin,
     format('select access from public.travel_people_list(%L) where id = %L', hh, p_member), 'none');
   perform pg_temp.t('they are invited at the address they sign in with', u_admin,
     format('select public.travel_invite_person(%L)', p_member), 'travel-test-member@example.test');
   perform pg_temp.t('and come back as a travel-only user', u_member,
     format('select role from public.travel_my_households() where id = %L', hh), 'user');
-  perform pg_temp.t('with their trip', u_member, 'select count(*) from public.travel_trips', '1');
+  perform pg_temp.t('with their own trip and the one they travel on', u_member, 'select count(*) from public.travel_trips', '2');
+  perform pg_temp.t('where they are an editor again', u_member,
+    format('select public.travel_can_edit_trip(%L)', t_admin), 'true');
 
   -- -------------------------------------------------------------------------------------------------------------
   -- Not signed in

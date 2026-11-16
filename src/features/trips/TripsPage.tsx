@@ -81,7 +81,7 @@ function TripCard({ trip, today, weather }: { trip: TripSummary; today: string; 
   const { household } = useHousehold()
   const { session } = useAuth()
   const { data: people } = usePeople()
-  const viewOnly = tripAccess(trip, household.role, session?.user.id) === 'view'
+  const viewOnly = tripAccess(trip, household.role, session?.user.id, trip.my_role) === 'view'
   // Admins see every trip, so they're told whose each one is when it isn't theirs.
   const otherOwner =
     household.role === 'admin' && trip.owner_id !== session?.user.id

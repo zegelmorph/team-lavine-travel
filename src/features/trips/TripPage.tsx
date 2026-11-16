@@ -15,8 +15,8 @@ import { useOnline } from '@/lib/useOnline'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useHousehold } from '@/features/auth/HouseholdProvider'
-import { TripAccessContext, useCanEdit } from './access'
-import { countdown, tripAccess } from './model'
+import { TripAccessContext, useCanEdit, useCanManage } from './access'
+import { countdown, myTripRole, tripAccess } from './model'
 import { STATUS_STYLES, StatusBadge } from './StatusBadge'
 import { ViewOnlyBadge } from './ViewOnlyBadge'
 import { tripRange } from './tripRange'
@@ -64,7 +64,9 @@ export function TripPage() {
   }
 
   return (
-    <TripAccessContext value={tripAccess(trip, household.role, session?.user.id)}>
+    <TripAccessContext
+      value={tripAccess(trip, household.role, session?.user.id, myTripRole(trip.participants, session?.user.id))}
+    >
       <div className={cn('mx-auto space-y-4 p-3 pb-24 md:space-y-6 md:p-6 lg:p-8', tab === 'schedule' ? 'max-w-none' : 'max-w-5xl')}>
         <TripHeader trip={trip} />
         <div className="-mx-3 overflow-x-auto px-3 md:mx-0 md:px-0">
@@ -89,6 +91,7 @@ function TripHeader({ trip }: { trip: TripBundle }) {
   const [editing, setEditing] = useState(false)
   const online = useOnline()
   const canEdit = useCanEdit()
+  const canManage = useCanManage()
   const { start, end } = tripRange(trip)
   const until = countdown(start, end, todayISO())
 
@@ -129,9 +132,11 @@ function TripHeader({ trip }: { trip: TripBundle }) {
                 <Button variant="ghost" size="icon" needsOnline onClick={() => setEditing(true)} title="Rename trip">
                   <Pencil className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete trip" className="-ml-1.5">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {canManage && (
+                  <Button variant="ghost" size="icon" needsOnline onClick={onDelete} title="Delete trip" className="-ml-1.5">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </>
             ) : (
               <ViewOnlyBadge />

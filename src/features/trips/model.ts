@@ -1,16 +1,33 @@
 import { differenceInCalendarDays } from 'date-fns'
 import { parseDay } from '@/lib/dates'
-import type { HouseholdRole, TripStatus, TripSummary } from '@/lib/types'
-
-/** `view` is a traveller on someone else's trip: they see all of it and can only tick packing items and to-dos. */
-export type TripAccess = 'manage' | 'view'
+import type { HouseholdRole, Participant, TripRole, TripStatus, TripSummary } from '@/lib/types'
 
 /**
- * What the signed-in user can do with a trip they can see. Mirrors `travel_can_edit` in the database, which is what
- * actually enforces it; this only decides which controls to show.
+ * `manage` is the trip's owner or an admin: everything, including who is on the trip and deleting it. `edit` is a
+ * traveller made an editor: the trip's contents, but not its travellers, its owner or deleting it. `view` is any
+ * other traveller: they see all of it and can only tick packing items and to-dos.
  */
-export function tripAccess(trip: { owner_id: string | null }, role: HouseholdRole, userId: string | undefined): TripAccess {
-  return role === 'admin' || (userId !== undefined && trip.owner_id === userId) ? 'manage' : 'view'
+export type TripAccess = 'manage' | 'edit' | 'view'
+
+/**
+ * What the signed-in user can do with a trip they can see. `tripRole` is their own role on it as a traveller, if
+ * they are one. Mirrors `travel_can_manage_trip` and `travel_can_edit_trip` in the database, which are what actually
+ * enforce it; this only decides which controls to show.
+ */
+export function tripAccess(
+  trip: { owner_id: string | null },
+  role: HouseholdRole,
+  userId: string | undefined,
+  tripRole: TripRole | null,
+): TripAccess {
+  if (role === 'admin' || (userId !== undefined && trip.owner_id === userId)) return 'manage'
+  return tripRole === 'editor' ? 'edit' : 'view'
+}
+
+/** The signed-in user's role on a trip, read off its travellers; null when they aren't one of them. */
+export function myTripRole(participants: Pick<Participant, 'role' | 'person'>[], userId: string | undefined): TripRole | null {
+  if (userId === undefined) return null
+  return participants.find((p) => p.person.user_id === userId)?.role ?? null
 }
 
 /** Order of the sections on the trips page: what's on now, then what's next, then ideas, then memories. */

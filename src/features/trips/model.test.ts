@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeTrips, countdown, groupTrips, tripAccess } from './model'
+import { activeTrips, countdown, groupTrips, myTripRole, tripAccess } from './model'
 import type { TripStatus, TripSummary } from '@/lib/types'
 
 function trip(name: string, status: TripStatus, start: string | null = null, end: string | null = null): TripSummary {
@@ -19,6 +19,7 @@ function trip(name: string, status: TripStatus, start: string | null = null, end
     destination_ids: [],
     participant_count: 0,
     participants: [],
+    my_role: null,
   }
 }
 
@@ -44,16 +45,44 @@ describe('countdown', () => {
 
 describe('tripAccess', () => {
   it('lets admins manage every trip', () => {
-    expect(tripAccess({ owner_id: 'someone-else' }, 'admin', 'me')).toBe('manage')
-    expect(tripAccess({ owner_id: null }, 'admin', 'me')).toBe('manage')
+    expect(tripAccess({ owner_id: 'someone-else' }, 'admin', 'me', null)).toBe('manage')
+    expect(tripAccess({ owner_id: null }, 'admin', 'me', null)).toBe('manage')
   })
   it('lets users manage only the trips they own', () => {
-    expect(tripAccess({ owner_id: 'me' }, 'user', 'me')).toBe('manage')
-    expect(tripAccess({ owner_id: 'someone-else' }, 'user', 'me')).toBe('view')
+    expect(tripAccess({ owner_id: 'me' }, 'user', 'me', null)).toBe('manage')
+    expect(tripAccess({ owner_id: 'someone-else' }, 'user', 'me', null)).toBe('view')
   })
   it('leaves a trip without an owner to the admins', () => {
-    expect(tripAccess({ owner_id: null }, 'user', 'me')).toBe('view')
-    expect(tripAccess({ owner_id: null }, 'user', undefined)).toBe('view')
+    expect(tripAccess({ owner_id: null }, 'user', 'me', null)).toBe('view')
+    expect(tripAccess({ owner_id: null }, 'user', undefined, null)).toBe('view')
+  })
+  it('lets an editor edit, and leaves a viewer viewing', () => {
+    expect(tripAccess({ owner_id: 'someone-else' }, 'user', 'me', 'editor')).toBe('edit')
+    expect(tripAccess({ owner_id: null }, 'user', 'me', 'editor')).toBe('edit')
+    expect(tripAccess({ owner_id: 'someone-else' }, 'user', 'me', 'viewer')).toBe('view')
+  })
+  it('keeps managing above a role on the trip', () => {
+    expect(tripAccess({ owner_id: 'me' }, 'user', 'me', 'viewer')).toBe('manage')
+    expect(tripAccess({ owner_id: 'someone-else' }, 'admin', 'me', 'viewer')).toBe('manage')
+  })
+})
+
+describe('myTripRole', () => {
+  const travellers = [
+    { role: 'viewer' as const, person: { name: 'Kid', user_id: null } },
+    { role: 'editor' as const, person: { name: 'Me', user_id: 'me' } },
+    { role: 'viewer' as const, person: { name: 'Them', user_id: 'them' } },
+  ]
+  it('finds the signed-in user among the travellers', () => {
+    expect(myTripRole(travellers, 'me')).toBe('editor')
+    expect(myTripRole(travellers, 'them')).toBe('viewer')
+  })
+  it('is empty for someone who is not travelling', () => {
+    expect(myTripRole(travellers, 'stranger')).toBeNull()
+    expect(myTripRole([], 'me')).toBeNull()
+  })
+  it('never matches a traveller without an account when nobody is signed in', () => {
+    expect(myTripRole(travellers, undefined)).toBeNull()
   })
 })
 

@@ -1,13 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" stroke-width="1.2" stroke-linejoin="round">
   <style>
-    .s { stroke: #2e9e4f; }
-    .f { fill: #2e9e4f; }
+    .k { fill: #1e5539; stroke: #1e5539; }
+    .u { fill: #256b46; stroke: #256b46; }
+    .w { fill: #6fbb8c; stroke: #6fbb8c; }
+    .s { fill: #2f8556; stroke: #2f8556; }
     @media (prefers-color-scheme: dark) {
-      .s { stroke: #4cbb6c; }
-      .f { fill: #4cbb6c; }
+      .k { fill: #2f6443; stroke: #2f6443; }
+      .u { fill: #3a8058; stroke: #3a8058; }
+      .w { fill: #94d4ad; stroke: #94d4ad; }
+      .s { fill: #4fa771; stroke: #4fa771; }
     }
   </style>
-  <circle class="s" cx="30" cy="34" r="20" fill="none" stroke-width="6" />
-  <path class="s" d="M11 32h38M30 15c-8 7-8 31 0 38M30 15c8 7 8 31 0 38" fill="none" stroke-width="3.5" />
-  <path class="f" d="M62 3 33 15l10 4 2 11z" />
+  <path class="k" d="M59 5 23 34 28 53Z" />
+  <path class="u" d="M59 5 28 53 33 40Z" />
+  <path class="w" d="M59 5 5 26 23 34Z" />
+  <path class="s" d="M59 5 33 40 46 58Z" />
 </svg>

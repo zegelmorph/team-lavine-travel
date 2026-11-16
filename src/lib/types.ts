@@ -60,8 +60,23 @@ export interface Trip {
   updated_at: string
 }
 
+/**
+ * What a traveller may do on a trip they neither own nor administer: viewers see it and tick packing items and
+ * to-dos off, editors also change its contents. Only matters for a traveller who can sign in.
+ */
+export type TripRole = 'viewer' | 'editor'
+
+export const TRIP_ROLES: TripRole[] = ['viewer', 'editor']
+
+export const TRIP_ROLE_LABELS: Record<TripRole, string> = {
+  viewer: 'Viewer',
+  editor: 'Editor',
+}
+
 /** Row of the `travel_trip_summaries` view. */
 export interface TripSummary extends Trip {
+  /** The signed-in user's role on the trip; null when they aren't one of its travellers. */
+  my_role: TripRole | null
   start_date: string | null
   end_date: string | null
   destinations: string[]
@@ -103,8 +118,9 @@ export interface Participant {
   trip_id: string
   person_id: string
   sort_order: number
+  role: TripRole
   /** Joined from `travel_people`. Whether they can sign in comes from the people list. */
-  person: { name: string }
+  person: { name: string; user_id: string | null }
 }
 
 export type TransportMode = 'car' | 'plane' | 'train' | 'subway' | 'ferry' | 'cruise' | 'bus' | 'rideshare' | 'walk' | 'other'

@@ -45,31 +45,35 @@ Everyone who can be put on a trip is a row in `travel_people` (a name, an option
 | Access | Who | Can |
 | --- | --- | --- |
 | **Admin** | An owner of the household (`household_members.role = 'owner'`) | See and change every trip, manage people, send invites, make members admins, reassign a trip's owner |
-| **User** | Any other household member, or someone invited from this app who has signed in | Create trips and fully manage the ones they own; see trips they're a traveller on |
+| **User** | Any other household member, or someone invited from this app who has signed in | Create trips and fully manage the ones they own; see trips they're a traveller on, and edit those where they've been made an editor |
 | **Invited** | Has an email and an invite, but hasn't signed in yet | Nothing until they sign in |
 | **No account** | A saved name, used as a traveller | Nothing |
 
-- A **trip's owner** (`travel_trips.owner_id`, the person who created it unless an admin reassigns it) and the admins manage the trip. Its **travellers** can see all of it, and can tick packing items and to-dos off, but change nothing else.
+- A **trip's owner** (`travel_trips.owner_id`, the person who created it unless an admin reassigns it) and the admins manage the trip. Each of its other **travellers** has a role on it (`travel_participants.role`), set by the owner or an admin from the trip's Travellers panel:
+  - A **viewer** (the default) can see all of the trip, and can tick packing items and to-dos off, but change nothing else.
+  - An **editor** can also change what's on the trip: its name, status and notes, destinations, travel, lodging, events, the packing list and the to-dos.
+  - Neither can change who is on the trip or anyone's role, invite its travellers, delete it or hand it to another owner. A role does nothing for a traveller who can't sign in, but it is kept: someone who loses their access and is invited back returns with the role they had.
 - Invites sent from this app are **travel-only**: the person gets an account and a `travel_people` row, not a `household_members` row, so they see nothing in the finance app. Full household membership is still granted from the finance app, and only household members can be made admins.
 - Admins invite from **Settings → Household → People**. A trip's owner can add a person (always a regular user) from the trip's Travellers panel and send their invite there. For someone saved without an email, an admin is asked for the address first, in either place; other trip owners aren't offered that, because only admins can change someone else's details (`travel_update_person()`).
 - Inviting is two steps in `travel-invite-user`: `travel_invite_person()` runs as the caller, checks they may invite that person, and records the invite and the sign-up allowlist row; then the function sends the Supabase invite email with the service role. A person who already has an account can't be invited again by Supabase, so they are emailed a sign-in link instead (the project's Magic Link template) and get access when they next open the app.
 - On sign-in the app calls `travel_sync_me()`, which accepts any pending finance invites and links the account to the `travel_people` rows carrying its confirmed email, and then `travel_my_households()` for the households it can use and its role in each.
 
-Every travel table carries `household_id` (copied from the parent trip by trigger) and has RLS enabled. Policies are built on three helpers rather than on `is_household_member()`:
+Every travel table carries `household_id` (copied from the parent trip by trigger) and has RLS enabled. Policies are built on four helpers rather than on `is_household_member()`:
 
 - `travel_is_user(household_id)`: has any access to the household's travel data (people list, packing catalog and categories, creating a trip).
 - `travel_can_view_trip(trip_id)`: an admin, the trip's owner, or one of its travellers.
-- `travel_can_edit_trip(trip_id)`: an admin or the trip's owner.
+- `travel_can_edit_trip(trip_id)`: an admin, the trip's owner, or one of its editors. Guards the rows that belong to a trip.
+- `travel_can_manage_trip(trip_id)`: an admin or the trip's owner. Guards `travel_participants`, and so who is on the trip and in what role.
 
-Two triggers hold what policies can't express: `travel_checklist_guard` lets a traveller change only `packed` on a packing item and `done` on a to-do, and `travel_trips_guard_owner` lets only admins change a trip's owner. `travel_people` has no write policies; it changes only through the `travel_*_person` functions, which check the caller.
+Two triggers hold what policies can't express: `travel_checklist_guard` lets a viewer change only `packed` on a packing item and `done` on a to-do, and `travel_trips_guard_owner` lets only admins change a trip's owner. `travel_people` has no write policies; it changes only through the `travel_*_person` functions, which check the caller.
 
-`supabase/tests/travel_access.sql` checks all of this as each kind of person (admin, member, travel-only user, traveller, revoked, never invited, another household). It builds its own households and users, and always ends by raising an exception that carries the result, so everything it did is rolled back. Run it after changing a policy, helper or trigger, and add a check for any new rule:
+`supabase/tests/travel_access.sql` checks all of this as each kind of person (admin, member, travel-only user, viewer, editor, revoked, never invited, another household). It builds its own households and users, and always ends by raising an exception that carries the result, so everything it did is rolled back. Run it after changing a policy, helper or trigger, and add a check for any new rule:
 
 ```
 npx supabase db query --linked --project-ref bkehjssluczhindlyeme -f supabase/tests/travel_access.sql
 ```
 
-The "error" it prints is the result, and should end in `0 failed` (`TRAVEL ACCESS TESTS (rolled back): 153 passed, 0 failed`); failed checks are listed by name after the counts. The flags are those of the Supabase CLI v2 this repo uses.
+The "error" it prints is the result, and should end in `0 failed` (`TRAVEL ACCESS TESTS (rolled back): 197 passed, 0 failed`); failed checks are listed by name after the counts. The flags are those of the Supabase CLI v2 this repo uses.
 
 ## Automations
 

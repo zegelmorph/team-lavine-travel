@@ -36,7 +36,7 @@ export function TripsNav() {
                 <span className="flex items-center gap-2">
                   {t.status === 'happening' && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />}
                   <span className="truncate text-sm font-medium">{t.name}</span>
-                  {tripAccess(t, household.role, session?.user.id) === 'view' && (
+                  {tripAccess(t, household.role, session?.user.id, t.my_role) === 'view' && (
                     <span role="img" aria-label="View only" title="View only" className="ml-auto shrink-0">
                       <Eye className="h-3 w-3 text-slate-400" />
                     </span>
