@@ -7,6 +7,7 @@ import type { Person, PersonAccess } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { InviteEmailDialog } from './InviteEmailDialog'
 import { PersonDialog } from './PersonDialog'
 import { useSendInvite } from './useSendInvite'
 
@@ -18,8 +19,8 @@ const ACCESS_LABELS: Record<PersonAccess, string> = {
 }
 
 /**
- * Everyone who can be put on a trip. Admins add people, invite the ones with an email to sign in, and manage their
- * access; everyone else sees the list.
+ * Everyone who can be put on a trip. Admins add people, invite them to sign in (someone saved without an email is
+ * asked for one first), and manage their access; everyone else sees the list.
  */
 export function PeopleSettings() {
   const { household } = useHousehold()
@@ -27,6 +28,7 @@ export function PeopleSettings() {
   const { data: people, isPending, error } = usePeople()
   const { send, sendingTo } = useSendInvite()
   const [editing, setEditing] = useState<Person | 'new' | null>(null)
+  const [askingEmailOf, setAskingEmailOf] = useState<Person | null>(null)
   const isAdmin = household.role === 'admin'
 
   return (
@@ -48,8 +50,9 @@ export function PeopleSettings() {
       ) : (
         <ul className="divide-y divide-slate-100">
           {people.map((p) => {
-            // Someone with an email who can't sign in yet can be sent an invite, or sent it again.
-            const invitable = isAdmin && p.email && (p.access === 'none' || p.access === 'invited')
+            // Someone who can't sign in yet can be sent an invite, or sent it again. Without an email they're asked
+            // for one first.
+            const invitable = isAdmin && (p.access === 'none' || p.access === 'invited')
             return (
               <li key={p.id} className="flex items-center justify-between gap-2 px-5 py-3 max-md:px-4">
                 <span className="flex min-w-0 items-center gap-3">
@@ -71,10 +74,19 @@ export function PeopleSettings() {
                         variant="ghost"
                         size="sm"
                         disabled={sendingTo === p.id}
-                        onClick={() => send(p)}
-                        title={p.access === 'invited' ? 'Send the invite email again' : 'Email them a link to sign in'}
+                        onClick={() => (p.email ? send(p) : setAskingEmailOf(p))}
+                        title={
+                          p.access === 'invited'
+                            ? 'Send the invite email again'
+                            : p.email
+                              ? 'Email them a link to sign in'
+                              : 'Add their email to invite them'
+                        }
+                        aria-label={p.access === 'invited' ? `Resend invite to ${p.name}` : `Send invite to ${p.name}`}
                       >
-                        <Send className="h-3.5 w-3.5" /> {p.access === 'invited' ? 'Resend' : 'Send invite'}
+                        <Send className="h-3.5 w-3.5" />
+                        {/* Icon only on a phone, where the label would squeeze the name out of the row. */}
+                        <span className="max-md:hidden">{p.access === 'invited' ? 'Resend' : 'Send invite'}</span>
                       </Button>
                     )}
                     <Button variant="ghost" size="icon" onClick={() => setEditing(p)} title={`Edit ${p.name}`} aria-label={`Edit ${p.name}`}>
@@ -93,6 +105,7 @@ export function PeopleSettings() {
           : 'Only admins can invite people or change their access. You can add people to your own trips from the trip.'}
       </p>
       {editing && <PersonDialog person={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
+      {askingEmailOf && <InviteEmailDialog person={askingEmailOf} onClose={() => setAskingEmailOf(null)} onInvite={send} />}
     </Card>
   )
 }
