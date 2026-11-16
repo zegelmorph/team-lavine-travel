@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Trash2, UserX } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAddPerson, useDeletePerson, useRemoveAccess, useSetAdmin, useUpdatePerson } from '@/lib/queries'
+import { isSystemAdmin } from '@/lib/householdQueries'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useHousehold } from '@/features/auth/HouseholdProvider'
 import type { Person } from '@/lib/types'
@@ -13,7 +14,9 @@ import { confirmAction } from '@/components/ui/confirm'
 
 /**
  * Adds a person, or (admins only) edits one. Adding is open to anyone with access and is how travellers are added on
- * the fly; it never makes someone an admin and sends nothing. Editing also covers the admin switch and removing them.
+ * the fly; it never makes someone an admin and sends nothing. Editing also covers the admin switch and the two ways
+ * out: removing their access, which keeps them on their trips as a name, and deleting them (their account too, when
+ * a system admin does it).
  */
 export function PersonDialog({
   person,
@@ -83,9 +86,37 @@ export function PersonDialog({
   }
 
   async function onDelete(p: Person) {
-    const ok = await confirmAction({ title: `Delete ${p.name}?`, message: 'They come off every trip they are on.' })
+    // Only a system admin's delete takes the account with it, so the confirm says so only for them.
+    let deletesAccount: boolean
+    try {
+      deletesAccount = await isSystemAdmin()
+    } catch (err) {
+      toast.error((err as Error).message)
+      return
+    }
+    const leaves = p.is_member
+      ? `${p.name} is removed from ${household.name}, which also ends their access to the finance app, and comes off every trip they are on.`
+      : `${p.name} comes off every trip they are on.`
+    const account = !deletesAccount
+      ? ''
+      : p.user_id || p.access === 'invited'
+        ? ' Their account is deleted.'
+        : p.email
+          ? ' Any account under their email is deleted.'
+          : ''
+    const ok = await confirmAction({ title: `Delete ${p.name}?`, message: `${leaves}${account} This can't be undone.` })
     if (!ok) return
-    remove.mutate(p.id, { onSuccess: onClose, onError: (e) => toast.error(e.message) })
+    remove.mutate(p.id, {
+      onSuccess: (outcome) => {
+        if (outcome === 'admin_only') {
+          toast.info(`${p.name} is deleted. Their account is still there: only a system admin can delete it.`)
+        } else if (outcome === 'kept') {
+          toast.info(`${p.name} is deleted. Their account is kept because something else still uses it.`)
+        }
+        onClose()
+      },
+      onError: (e) => toast.error(e.message),
+    })
   }
 
   return (
@@ -116,15 +147,18 @@ export function PersonDialog({
             />
           )}
           <div className="flex flex-wrap items-center justify-between gap-2">
-            {person && !isMe && person.access !== 'none' && (
-              <Button type="button" variant="ghost" needsOnline disabled={busy} className="text-red-700" onClick={() => onRemoveAccess(person)}>
-                <UserX className="h-4 w-4" /> {person.access === 'invited' ? 'Cancel invite' : 'Remove access'}
-              </Button>
-            )}
-            {person?.access === 'none' && (
-              <Button type="button" variant="ghost" needsOnline disabled={busy} className="text-red-700" onClick={() => onDelete(person)}>
-                <Trash2 className="h-4 w-4" /> Delete
-              </Button>
+            {person && !isMe && (
+              // Kept together so that when the row wraps, the two ways out stay side by side above Cancel and Save.
+              <span className="flex gap-2">
+                {person.access !== 'none' && (
+                  <Button type="button" variant="ghost" needsOnline disabled={busy} className="text-red-700" onClick={() => onRemoveAccess(person)}>
+                    <UserX className="h-4 w-4" /> {person.access === 'invited' ? 'Cancel invite' : 'Remove access'}
+                  </Button>
+                )}
+                <Button type="button" variant="ghost" needsOnline disabled={busy} className="text-red-700" onClick={() => onDelete(person)}>
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+              </span>
             )}
             <span className="ml-auto flex gap-2">
               <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>

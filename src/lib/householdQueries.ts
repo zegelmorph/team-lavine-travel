@@ -44,6 +44,14 @@ export function useCreateHousehold() {
   })
 }
 
+/**
+ * Whether the signed-in user is a system admin of the shared project (the finance app's `app_admins`). Deleting an
+ * account is theirs alone, here as in the finance app; the database enforces it, this is for saying so beforehand.
+ */
+export async function isSystemAdmin(): Promise<boolean> {
+  return unwrap(await supabase.rpc('is_app_admin')) as boolean
+}
+
 /** Calls an edge function, surfacing the `{ error }` message it returns instead of a generic HTTP error. */
 export async function invokeFunction<T = unknown>(name: string, body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke(name, { body })

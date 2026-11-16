@@ -7,7 +7,7 @@
 --   npx supabase db query --linked --project-ref bkehjssluczhindlyeme -f supabase/tests/travel_access.sql
 -- (or with the Supabase MCP execute_sql tool, or in the SQL editor). It builds its own households and users and
 -- always ends by raising, so nothing it does is kept. The "error" it ends with is the result:
---   TRAVEL ACCESS TESTS (rolled back): 197 passed, 0 failed
+--   TRAVEL ACCESS TESTS (rolled back): 247 passed, 0 failed
 -- followed by one line for each check that failed.
 --
 -- This isn't a pgTAP test: `supabase test db` (which runs against a local database this repo doesn't use) would
@@ -24,6 +24,22 @@ declare
   u_rev uuid := gen_random_uuid();
   u_unc uuid := gen_random_uuid();
   u_other uuid := gen_random_uuid();
+  u_del_inv uuid := gen_random_uuid();
+  u_del_user uuid := gen_random_uuid();
+  u_del_mem uuid := gen_random_uuid();
+  u_del_sys uuid := gen_random_uuid();
+  u_keep_hh2 uuid := gen_random_uuid();
+  u_keep_linked uuid := gen_random_uuid();
+  u_keep_invited uuid := gen_random_uuid();
+  u_keep_pending uuid := gen_random_uuid();
+  u_keep_unsynced uuid := gen_random_uuid();
+  p_keep uuid;
+  p_del_inv uuid;
+  p_del_user uuid;
+  p_del_mem uuid;
+  p_del_sys uuid;
+  p_del_other uuid;
+  t_del_user uuid;
   p_trav uuid;
   p_out uuid;
   p_rev uuid;
@@ -585,8 +601,6 @@ begin
     'ERROR: You can''t remove your own access%');
   perform pg_temp.t('a household member is removed from the household instead', u_admin,
     format('select public.travel_revoke_person(%L)', p_member), 'ERROR:%household member%');
-  perform pg_temp.t('someone with access can''t be deleted', u_admin,
-    format('select public.travel_delete_person(%L)', p_trav), 'ERROR: Remove%access first');
   perform pg_temp.t('admin removes access', u_admin,
     format('select public.travel_revoke_person(%L)', p_rev), '!ERROR%');
   perform pg_temp.travel_test_check('which unlinks the account and forgets the invite',
@@ -595,8 +609,11 @@ begin
   perform pg_temp.t('and still have no access', u_rev, 'select count(*) from public.travel_my_households()', '0');
   perform pg_temp.t('or any trips', u_rev, 'select count(*) from public.travel_trips', '0');
   perform pg_temp.t('or people', u_rev, format('select count(*) from public.travel_people_list(%L)', hh), '0');
-  perform pg_temp.t('then they can be deleted', u_admin,
-    format('select public.travel_delete_person(%L)', p_rev), '!ERROR%');
+  -- Their account is still there under the same email, and only a system admin can delete accounts.
+  perform pg_temp.t('then they are deleted, though not their account', u_admin,
+    format('select public.travel_delete_person(%L)', p_rev), 'admin_only');
+  perform pg_temp.travel_test_check('which is still there',
+    (select count(*)::text from auth.users where id = u_rev), '1');
 
   -- Removing a traveller's access: they stay on the trip as a name, and their own trip is left to the admins. Their
   -- role on the trip does nothing meanwhile, but it is kept, and is what they get if they are invited back.
@@ -647,6 +664,222 @@ begin
   perform pg_temp.t('with their own trip and the one they travel on', u_member, 'select count(*) from public.travel_trips', '2');
   perform pg_temp.t('where they are an editor again', u_member,
     format('select public.travel_can_edit_trip(%L)', t_admin), 'true');
+
+  -- -------------------------------------------------------------------------------------------------------------
+  -- Deleting people
+  -- -------------------------------------------------------------------------------------------------------------
+
+  -- Four more people, invited by the admin (which is what lets their accounts be created), each with the account
+  -- Supabase makes when the invite goes out. One never follows the invite, one signs in as a travel-only user, one is
+  -- also made a household member and an admin, and one is also a system admin of the finance app.
+  p_del_inv := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Delete Invited', 'travel-test-del-inv@example.test'));
+  p_del_user := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Delete User', 'travel-test-del-user@example.test'));
+  p_del_mem := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Delete Member', 'travel-test-del-mem@example.test'));
+  p_del_sys := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Delete Sysadmin', 'travel-test-del-sys@example.test'));
+  perform pg_temp.travel_test_as(u_admin, format('select public.travel_invite_person(%L)', p))
+  from unnest(array[p_del_inv, p_del_user, p_del_mem, p_del_sys]) p;
+
+  insert into auth.users (id, instance_id, aud, role, email, email_confirmed_at, created_at, updated_at)
+  select
+    v.id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+    'travel-test-del-' || v.tag || '@example.test',
+    case when v.tag = 'inv' then null else now() end,
+    now(), now()
+  from (values (u_del_inv, 'inv'), (u_del_user, 'user'), (u_del_mem, 'mem'), (u_del_sys, 'sys')) v(id, tag);
+  insert into public.household_members (household_id, user_id, role) values (hh, u_del_mem, 'owner');
+  insert into public.app_admins (user_id) values (u_del_sys);
+  perform pg_temp.travel_test_as(u, 'select public.travel_sync_me()')
+  from unnest(array[u_del_user, u_del_mem, u_del_sys]) u;
+
+  perform pg_temp.t('the travel-only user makes a trip', u_del_user,
+    format('insert into public.travel_trips (household_id, name) values (%L, %L)', hh, 'Delete user trip'), '1');
+  select id into t_del_user from public.travel_trips where household_id = hh and name = 'Delete user trip';
+  perform pg_temp.t('and is put on another', u_admin,
+    format('insert into public.travel_participants (trip_id, person_id) values (%L, %L)', t_admin, p_del_user), '1');
+  perform pg_temp.t('list: the household member', u_admin,
+    format('select is_member from public.travel_people_list(%L) where id = %L', hh, p_del_mem), 'true');
+
+  perform pg_temp.t('another household''s admin can''t delete people here', u_other,
+    format('select public.travel_delete_person(%L)', p_del_user), 'ERROR: Only an admin%');
+  perform pg_temp.t('a travel-only user can''t delete people', u_del_user,
+    format('select public.travel_delete_person(%L)', p_del_inv), 'ERROR: Only an admin%');
+  perform pg_temp.t('admin can''t delete themselves', u_admin,
+    format('select public.travel_delete_person(id) from public.travel_people where household_id = %L and user_id = %L', hh, u_admin),
+    'ERROR: You can''t delete yourself%');
+
+  -- Deleting accounts is for system admins, as it is in the finance app. Any other admin still removes the person,
+  -- from the household and from their trips, but the account (or the approval to make one) is left as it was.
+  perform pg_temp.t('an admin who isn''t a system admin deletes a user', u_admin,
+    format('select public.travel_delete_person(%L)', p_member), 'admin_only');
+  perform pg_temp.travel_test_check('whose account stays',
+    (select count(*)::text from auth.users where id = u_member), '1');
+  perform pg_temp.t('with no access', u_member, 'select count(*) from public.travel_my_households()', '0');
+  perform pg_temp.travel_test_check('and no person or place on trips',
+    (select (
+      (select count(*) from public.travel_people where id = p_member)
+      + (select count(*) from public.travel_participants where person_id = p_member)
+    )::text), '0');
+  perform pg_temp.t('they invite someone whose email never arrives', u_admin,
+    format('select public.travel_invite_person(%L)', p_new), 'travel-test-new2@example.test');
+  perform pg_temp.t('and delete them', u_admin,
+    format('select public.travel_delete_person(%L)', p_new), 'none');
+  perform pg_temp.travel_test_check('which leaves the approval to sign up',
+    (select count(*)::text from public.signup_allowlist where email = 'travel-test-new2@example.test'), '1');
+
+  -- From here on the admin is a system admin too.
+  insert into public.app_admins (user_id) values (u_admin);
+
+  -- Someone invited who never signed in: the account the invite made goes with them.
+  perform pg_temp.t('admin deletes someone invited', u_admin,
+    format('select public.travel_delete_person(%L)', p_del_inv), 'deleted');
+  perform pg_temp.travel_test_check('their account is gone',
+    (select count(*)::text from auth.users where id = u_del_inv), '0');
+  perform pg_temp.travel_test_check('and they can''t sign up again',
+    (select count(*)::text from public.signup_allowlist where email = 'travel-test-del-inv@example.test'), '0');
+
+  -- Someone with access, in one step.
+  perform pg_temp.t('admin deletes a travel-only user', u_admin,
+    format('select public.travel_delete_person(%L)', p_del_user), 'deleted');
+  perform pg_temp.travel_test_check('their account is gone too',
+    (select count(*)::text from auth.users where id = u_del_user), '0');
+  perform pg_temp.travel_test_check('as is the person, and their place on trips',
+    (select (
+      (select count(*) from public.travel_people where id = p_del_user)
+      + (select count(*) from public.travel_participants where person_id = p_del_user)
+    )::text), '0');
+  perform pg_temp.travel_test_check('their trip stays, without an owner',
+    (select (owner_id is null)::text from public.travel_trips where id = t_del_user), 'true');
+  perform pg_temp.t('a token they still hold shows them nothing', u_del_user, 'select count(*) from public.travel_trips', '0');
+  perform pg_temp.t('and no households', u_del_user, 'select count(*) from public.travel_my_households()', '0');
+
+  -- A household member, here another admin: out of the household (and so the finance app), and the account with them.
+  perform pg_temp.t('admin deletes another admin', u_admin,
+    format('select public.travel_delete_person(%L)', p_del_mem), 'deleted');
+  perform pg_temp.travel_test_check('who is out of the household, account and all',
+    (select (
+      (select count(*) from auth.users where id = u_del_mem)
+      + (select count(*) from public.household_members where user_id = u_del_mem)
+    )::text), '0');
+  perform pg_temp.t('and the household still has its admin', u_admin,
+    format('select role from public.travel_my_households() where id = %L', hh), 'admin');
+
+  -- An account left behind when access was removed earlier, which nothing else uses, goes with the name.
+  perform pg_temp.t('admin deletes someone whose access was removed earlier', u_admin,
+    format('select public.travel_delete_person(%L)', p_trav), 'deleted');
+  perform pg_temp.travel_test_check('and the leftover account goes',
+    (select count(*)::text from auth.users where id = u_trav), '0');
+
+  -- Accounts something else still uses are left alone, even for a system admin; the person still goes. Each of the
+  -- next six has exactly one such use.
+  perform pg_temp.t('admin deletes a system admin of the finance app', u_admin,
+    format('select public.travel_delete_person(%L)', p_del_sys), 'kept');
+  perform pg_temp.travel_test_check('whose account stays',
+    (select count(*)::text from auth.users where id = u_del_sys), '1');
+  perform pg_temp.t('but has no access here', u_del_sys, 'select count(*) from public.travel_my_households()', '0');
+
+  insert into public.signup_allowlist (email, invited_at)
+  select 'travel-test-keep-' || x || '@example.test', '2000-01-01'
+  from unnest(array['hh2', 'linked', 'invited', 'pending', 'unsynced']) x;
+  insert into auth.users (id, instance_id, aud, role, email, email_confirmed_at, created_at, updated_at)
+  select
+    v.id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+    'travel-test-keep-' || v.tag || '@example.test', now(), now(), now()
+  from (
+    values (u_keep_hh2, 'hh2'), (u_keep_linked, 'linked'), (u_keep_invited, 'invited'), (u_keep_pending, 'pending'),
+      (u_keep_unsynced, 'unsynced')
+  ) v(id, tag);
+
+  -- A travel-only user here who is a member of the other household (and, for this check, not yet a person there).
+  insert into public.household_members (household_id, user_id, role) values (hh2, u_keep_hh2, 'member');
+  p_keep := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Keep Member', 'travel-test-keep-hh2@example.test'));
+  perform pg_temp.travel_test_as(u_admin, format('select public.travel_invite_person(%L)', p_keep));
+  perform pg_temp.travel_test_as(u_keep_hh2, 'select public.travel_sync_me()');
+  delete from public.travel_people where household_id = hh2 and user_id = u_keep_hh2;
+  perform pg_temp.travel_test_check('a user here who belongs to another household',
+    (select (user_id = u_keep_hh2)::text from public.travel_people where id = p_keep), 'true');
+  perform pg_temp.t('keeps their account', u_admin,
+    format('select public.travel_delete_person(%L)', p_keep), 'kept');
+
+  -- A name here whose email is the account of the other household's travel-only user (saved there without it).
+  p_keep := pg_temp.travel_test_as(u_other,
+    format('select public.travel_add_person(%L, %L, %L)', hh2, 'Test Keep Linked', 'travel-test-keep-linked@example.test'));
+  perform pg_temp.travel_test_as(u_other, format('select public.travel_invite_person(%L)', p_keep));
+  perform pg_temp.travel_test_as(u_keep_linked, 'select public.travel_sync_me()');
+  update public.travel_people set email = null where id = p_keep;
+  perform pg_temp.travel_test_check('another household''s traveller',
+    (select (user_id = u_keep_linked)::text from public.travel_people where id = p_keep), 'true');
+  p_keep := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Keep Linked', 'travel-test-keep-linked@example.test'));
+  perform pg_temp.t('keeps their account', u_admin,
+    format('select public.travel_delete_person(%L)', p_keep), 'kept');
+
+  -- A name here whose email the other household has invited, and who hasn't signed in there yet.
+  p_keep := pg_temp.travel_test_as(u_other,
+    format('select public.travel_add_person(%L, %L, %L)', hh2, 'Test Keep Invited', 'travel-test-keep-invited@example.test'));
+  perform pg_temp.travel_test_as(u_other, format('select public.travel_invite_person(%L)', p_keep));
+  p_keep := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Keep Invited', 'travel-test-keep-invited@example.test'));
+  perform pg_temp.t('someone another household has invited keeps their account', u_admin,
+    format('select public.travel_delete_person(%L)', p_keep), 'kept');
+
+  -- A name here whose email is waiting on a finance invite to the other household.
+  insert into public.household_invites (household_id, email, invited_by)
+  values (hh2, 'travel-test-keep-pending@example.test', u_other);
+  p_keep := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Keep Pending', 'travel-test-keep-pending@example.test'));
+  perform pg_temp.t('someone invited to another household in the finance app keeps their account', u_admin,
+    format('select public.travel_delete_person(%L)', p_keep), 'kept');
+
+  -- A name here whose email is the account of a member of this household who hasn't opened the travel app.
+  insert into public.household_members (household_id, user_id, role) values (hh, u_keep_unsynced, 'member');
+  p_keep := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Keep Unsynced', 'travel-test-keep-unsynced@example.test'));
+  perform pg_temp.t('a name under a household member''s email doesn''t cost them their account', u_admin,
+    format('select public.travel_delete_person(%L)', p_keep), 'kept');
+  perform pg_temp.travel_test_check('or their place in the household',
+    (select count(*)::text from public.household_members where household_id = hh and user_id = u_keep_unsynced), '1');
+
+  perform pg_temp.travel_test_check('all five accounts are still there',
+    (select count(*)::text from auth.users
+     where id in (u_keep_hh2, u_keep_linked, u_keep_invited, u_keep_pending, u_keep_unsynced)), '5');
+
+  p_del_other := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Delete Other', 'travel-test-other@example.test'));
+  perform pg_temp.t('another household''s member is invited here', u_admin,
+    format('select public.travel_invite_person(%L)', p_del_other), 'travel-test-other@example.test');
+  perform pg_temp.t('and signs in', u_other, 'select public.travel_sync_me()', '!ERROR%');
+  perform pg_temp.t('to both households', u_other, 'select count(*) from public.travel_my_households()', '2');
+  perform pg_temp.t('admin deletes them', u_admin,
+    format('select public.travel_delete_person(%L)', p_del_other), 'kept');
+  perform pg_temp.t('which leaves them their own household', u_other,
+    'select string_agg(id::text, '','') from public.travel_my_households()', hh2::text);
+
+  -- No account at all: an invite that was recorded but never went out loses its approval to sign up, unless another
+  -- household has invited that email too. And a plain name.
+  p_keep := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Delete Unsent', 'travel-test-del-unsent@example.test'));
+  perform pg_temp.t('admin invites someone whose email never arrives', u_admin,
+    format('select public.travel_invite_person(%L)', p_keep), 'travel-test-del-unsent@example.test');
+  perform pg_temp.t('and deletes them', u_admin,
+    format('select public.travel_delete_person(%L)', p_keep), 'none');
+  perform pg_temp.travel_test_check('which takes back the approval to sign up',
+    (select count(*)::text from public.signup_allowlist where email = 'travel-test-del-unsent@example.test'), '0');
+  p_keep := pg_temp.travel_test_as(u_other,
+    format('select public.travel_add_person(%L, %L, %L)', hh2, 'Test Keep Approved', 'travel-test-keep-approved@example.test'));
+  perform pg_temp.travel_test_as(u_other, format('select public.travel_invite_person(%L)', p_keep));
+  p_keep := pg_temp.travel_test_as(u_admin,
+    format('select public.travel_add_person(%L, %L, %L)', hh, 'Test Keep Approved', 'travel-test-keep-approved@example.test'));
+  perform pg_temp.t('admin deletes a name under an email another household has invited', u_admin,
+    format('select public.travel_delete_person(%L)', p_keep), 'none');
+  perform pg_temp.travel_test_check('which leaves that invite its approval',
+    (select count(*)::text from public.signup_allowlist where email = 'travel-test-keep-approved@example.test'), '1');
+  perform pg_temp.t('admin deletes a name', u_admin,
+    format('select public.travel_delete_person(%L)', p_kid), 'none');
 
   -- -------------------------------------------------------------------------------------------------------------
   -- Not signed in

@@ -434,13 +434,17 @@ export function useRemoveAccess() {
   })
 }
 
-/** Deletes someone who has no access, taking them off every trip. */
+/**
+ * Removes someone altogether: off every trip and out of the household (and so the finance app, for a member). When
+ * a system admin does it their account is deleted too. Resolves to what became of the account: 'deleted';
+ * 'admin_only' when it was left because the caller isn't a system admin; 'kept' when it was left because something
+ * else still uses it; 'none' when there wasn't one.
+ */
 export function useDeletePerson() {
   const invalidate = useInvalidatePeople()
   return useMutation({
-    mutationFn: async (id: string) => {
-      unwrap(await supabase.rpc('travel_delete_person', { p_id: id }))
-    },
+    mutationFn: async (id: string) =>
+      unwrap(await supabase.rpc('travel_delete_person', { p_id: id })) as 'deleted' | 'admin_only' | 'kept' | 'none',
     onSuccess: invalidate,
   })
 }
